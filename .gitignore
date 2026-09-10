@@ -5,5 +5,7 @@
 *.tfstate
 *.tfstate.*
 
-#Terraform files to not ignore
-!.terraform.lock.hcl
+# Reusable modules do not pin providers with a lock file
+.terraform.lock.hcl
+
+*.swp

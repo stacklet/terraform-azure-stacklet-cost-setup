@@ -1,23 +1,28 @@
 # terraform-azure-stacklet-cost-setup
-Cost and Usage Report (CUR) setup for Stacklet customers
 
-This repository provides automation for setting up a CUR in your organizational account in such a way that the Stacklet platform, running in a different account, can access and use the CUR data.
+Azure Cost Management export setup for Stacklet customers.
 
-More background information, along with instructions for accomplishing the same thing via the AWS console, can be found in the Stacklet documentation.
+This module configures one Azure subscription to export its cost data to a
+Storage Account, in the format that the Stacklet platform reads. The platform
+runs outside the subscription and reads the export with credentials that you
+give to Stacklet separately. This module does not grant that access.
 
-## Azure
+For background, and for the steps to do the same thing through the Azure
+portal, see the Stacklet documentation.
 
-### Overview
+## Overview
 
-The terraform in this repository is meant to be applied in each subscription, independent of any account in which the Stacklet platform is running, and must be applied by a user or service principal that has permissions to create Cost Management exports, storage accounts, and resource groups. Stacklet utilizes credentials provided in Stacklet to read from the created Storage Account.
+Apply this module once per subscription. The user or service principal that
+applies it needs permission to create Cost Management exports, Storage
+Accounts, and Resource Groups.
 
-It does the following:
+The module creates:
 
-* Creates a Resource Group to contain all created resources
-* Creates a Storage Account to store cost management exports
-* Creates a Cost Management export job to push data into the Storage Account
+* a Resource Group that holds the resources below
+* a Storage Account for the cost management exports
+* a daily Cost Management export job that writes to the Storage Account
 
-This setup ensures that the Cost Management export is in the format required by Stacklet.
+The job exports in the format that Stacklet needs.
 
 ## Provider Configuration
 
