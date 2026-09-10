@@ -19,17 +19,87 @@ It does the following:
 
 This setup ensures that the Cost Management export is in the format required by Stacklet.
 
+## Provider Configuration
+
+This module does not configure providers. The calling module must configure
+the `azurerm` provider with the target subscription. azurerm 4.0 and later
+require `subscription_id` on the provider block. The provider does not read the
+subscription that `az login` selected.
+
+Credentials come from the standard Azure authentication chain. For local use,
+authenticate with `az login`. For automated deployments, supply credentials
+through environment variables (`ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`,
+`ARM_TENANT_ID`) or set `client_id`, `client_secret`, and `tenant_id` directly
+on the provider block.
+
+### Standalone deployment
+
+The common case, applying the cost export to a single subscription:
+
+```hcl
+provider "azurerm" {
+  features {}
+  subscription_id = "your-subscription-id"
+}
+
+module "azure_cost_setup" {
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<sha>"
+
+  customer_prefix         = "your-prefix"
+  resource_group_location = "eastus"
+}
+```
+
+### Several subscriptions in one root module
+
+Apply the module once per subscription. Give each subscription an aliased
+provider and pass that provider to the module:
+
+```hcl
+provider "azurerm" {
+  features {}
+  subscription_id = "management-subscription-id"
+}
+
+provider "azurerm" {
+  alias           = "workload"
+  subscription_id = "workload-subscription-id"
+  features {}
+}
+
+module "azure_cost_setup_workload" {
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<sha>"
+
+  providers = {
+    azurerm = azurerm.workload
+  }
+
+  customer_prefix         = "your-prefix"
+  resource_group_location = "eastus"
+}
+```
+
+## Migrating from a previous version
+
+Earlier versions of this module declared an `azurerm` provider block, so a root
+module that supplied no provider still worked. We removed that block. Add an
+`azurerm` provider block to your root module and set `subscription_id` on it.
+
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
-No requirements.
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9.0, < 2.0.0 |
+| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >= 4.56.0, < 5.0.0 |
+| <a name="requirement_random"></a> [random](#requirement\_random) | >= 3.8.1, < 4.0.0 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | n/a |
-| <a name="provider_random"></a> [random](#provider\_random) | n/a |
+| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | >= 4.56.0, < 5.0.0 |
+| <a name="provider_random"></a> [random](#provider\_random) | >= 3.8.1, < 4.0.0 |
 
 ## Modules
 
