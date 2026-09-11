@@ -37,9 +37,12 @@ through environment variables (`ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`,
 `ARM_TENANT_ID`) or set `client_id`, `client_secret`, and `tenant_id` directly
 on the provider block.
 
+This module has no tagged releases yet, so pin `source` to a commit on `main`
+rather than to a version.
+
 ### Standalone deployment
 
-The common case, applying the cost export to a single subscription:
+Applying the cost export to a single subscription:
 
 ```hcl
 provider "azurerm" {
@@ -48,7 +51,7 @@ provider "azurerm" {
 }
 
 module "azure_cost_setup" {
-  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<sha>"
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<commit-sha>"
 
   customer_prefix         = "your-prefix"
   resource_group_location = "eastus"
@@ -73,7 +76,7 @@ provider "azurerm" {
 }
 
 module "azure_cost_setup_workload" {
-  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<sha>"
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<commit-sha>"
 
   providers = {
     azurerm = azurerm.workload
@@ -89,6 +92,12 @@ module "azure_cost_setup_workload" {
 Earlier versions of this module declared an `azurerm` provider block, so a root
 module that supplied no provider still worked. We removed that block. Add an
 `azurerm` provider block to your root module and set `subscription_id` on it.
+
+If you apply this repository directly from a checkout, azurerm now stops at plan
+and asks for explicit configuration, because its `features` block has no
+default. Consume the module from your own root module instead, as shown above.
+That is the pattern this module is built for, and it keeps the provider
+configuration with the caller who owns the subscription.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
