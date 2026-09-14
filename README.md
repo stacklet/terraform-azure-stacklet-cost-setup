@@ -1,35 +1,121 @@
 # terraform-azure-stacklet-cost-setup
-Cost and Usage Report (CUR) setup for Stacklet customers
 
-This repository provides automation for setting up a CUR in your organizational account in such a way that the Stacklet platform, running in a different account, can access and use the CUR data.
+Azure Cost Management export setup for Stacklet customers.
 
-More background information, along with instructions for accomplishing the same thing via the AWS console, can be found in the Stacklet documentation.
+This module configures one Azure subscription to export its cost data to a
+Storage Account, in the format that the Stacklet platform reads. The platform
+runs outside the subscription and reads the export with credentials that you
+give to Stacklet separately. This module does not grant that access.
 
-## Azure
+For background, and for the steps to do the same thing through the Azure
+portal, see the Stacklet documentation.
 
-### Overview
+## Overview
 
-The terraform in this repository is meant to be applied in each subscription, independent of any account in which the Stacklet platform is running, and must be applied by a user or service principal that has permissions to create Cost Management exports, storage accounts, and resource groups. Stacklet utilizes credentials provided in Stacklet to read from the created Storage Account.
+Apply this module once per subscription. The user or service principal that
+applies it needs permission to create Cost Management exports, Storage
+Accounts, and Resource Groups.
 
-It does the following:
+The module creates:
 
-* Creates a Resource Group to contain all created resources
-* Creates a Storage Account to store cost management exports
-* Creates a Cost Management export job to push data into the Storage Account
+* a Resource Group that holds the resources below
+* a Storage Account for the cost management exports
+* a daily Cost Management export job that writes to the Storage Account
 
-This setup ensures that the Cost Management export is in the format required by Stacklet.
+The job exports in the format that Stacklet needs.
+
+## Provider Configuration
+
+This module does not configure providers. The calling module must configure
+the `azurerm` provider with the target subscription. azurerm 4.0 and later
+require `subscription_id` on the provider block. The provider does not read the
+subscription that `az login` selected.
+
+Credentials come from the standard Azure authentication chain. For local use,
+authenticate with `az login`. For automated deployments, supply credentials
+through environment variables (`ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`,
+`ARM_TENANT_ID`) or set `client_id`, `client_secret`, and `tenant_id` directly
+on the provider block.
+
+This module has no tagged releases yet, so pin `source` to a commit on `main`
+rather than to a version.
+
+### Standalone deployment
+
+Applying the cost export to a single subscription:
+
+```hcl
+provider "azurerm" {
+  features {}
+  subscription_id = "your-subscription-id"
+}
+
+module "azure_cost_setup" {
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<commit-sha>"
+
+  customer_prefix         = "your-prefix"
+  resource_group_location = "eastus"
+}
+```
+
+### Several subscriptions in one root module
+
+Apply the module once per subscription. Give each subscription an aliased
+provider and pass that provider to the module:
+
+```hcl
+provider "azurerm" {
+  features {}
+  subscription_id = "management-subscription-id"
+}
+
+provider "azurerm" {
+  alias           = "workload"
+  subscription_id = "workload-subscription-id"
+  features {}
+}
+
+module "azure_cost_setup_workload" {
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<commit-sha>"
+
+  providers = {
+    azurerm = azurerm.workload
+  }
+
+  customer_prefix         = "your-prefix"
+  resource_group_location = "eastus"
+}
+```
+
+## Migrating from a previous version
+
+There are no release tags yet, so check the copy you have pinned rather than a
+version number. If it declares its own `azurerm` provider block, that is the
+block this change removes. A root module that supplied no provider relied on
+it. Add an `azurerm` provider block to your root module and set
+`subscription_id` on it.
+
+If you apply this repository directly from a checkout, azurerm now stops at plan
+and asks for explicit configuration, because its `features` block has no
+default. Consume the module from your own root module instead, as shown above.
+That is the pattern this module is built for, and it keeps the provider
+configuration with the caller who owns the subscription.
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
 
-No requirements.
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9.0, < 2.0.0 |
+| <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >= 4.0.0, < 5.0.0 |
+| <a name="requirement_random"></a> [random](#requirement\_random) | >= 3.8.1, < 4.0.0 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | n/a |
-| <a name="provider_random"></a> [random](#provider\_random) | n/a |
+| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | >= 4.0.0, < 5.0.0 |
+| <a name="provider_random"></a> [random](#provider\_random) | >= 3.8.1, < 4.0.0 |
 
 ## Modules
 
