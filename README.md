@@ -89,9 +89,11 @@ module "azure_cost_setup_workload" {
 
 ## Migrating from a previous version
 
-Earlier versions of this module declared an `azurerm` provider block, so a root
-module that supplied no provider still worked. We removed that block. Add an
-`azurerm` provider block to your root module and set `subscription_id` on it.
+There are no release tags yet, so check the copy you have pinned rather than a
+version number. If it declares its own `azurerm` provider block, that is the
+block this change removes. A root module that supplied no provider relied on
+it. Add an `azurerm` provider block to your root module and set
+`subscription_id` on it.
 
 If you apply this repository directly from a checkout, azurerm now stops at plan
 and asks for explicit configuration, because its `features` block has no
