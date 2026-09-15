@@ -32,8 +32,12 @@ resource "time_rotating" "export_window_start" {
 
   triggers = {
     # The storage location is ForceNew on the export, so a change there makes
-    # Terraform create the export again rather than update it.
-    storage_location = azurerm_storage_container.cost.id
+    # Terraform create the export again rather than update it. Mirror the exact
+    # attribute the export keys on below. The container also exposes a
+    # data-plane `id`, which names only the account and the container, so it
+    # holds still through a resource group or subscription change that moves
+    # the ARM id and replaces the export.
+    storage_location = azurerm_storage_container.cost.resource_manager_id
 
     # A window change rewrites both dates on the export. Measured from a start
     # left alone, the new end date lands in the past for any window shorter
