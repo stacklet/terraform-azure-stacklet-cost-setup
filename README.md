@@ -108,8 +108,12 @@ deleted in the portal or replaced by hand. After either, replace the start date
 as well, so the new export gets a current one:
 
 ```
-terraform apply -replace=time_rotating.export_window_start
+terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_start
 ```
+
+Use the name of your own module block. Terraform matches `-replace` against the
+address in your root state, and it reports no changes rather than an error when
+nothing matches, so a target without the module prefix looks like it worked.
 
 ## Migrating from a previous version
 

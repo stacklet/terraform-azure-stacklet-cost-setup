@@ -28,7 +28,7 @@ resource "azurerm_storage_container" "cost" {
 # state, renews it once half the window passes, and takes a fresh one from
 # either trigger below.
 resource "time_rotating" "export_window_start" {
-  rotation_years = local.export_renewal_years
+  rotation_months = local.export_renewal_months
 
   triggers = {
     # The storage location is ForceNew on the export, so a change there makes

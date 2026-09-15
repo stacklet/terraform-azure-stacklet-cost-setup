@@ -10,7 +10,10 @@ locals {
   # an operator who applies the module only now and then still never finds it
   # expired. Renewal needs a run: the time provider proposes it during a plan,
   # and nothing renews an export that no one applies.
-  export_renewal_years = floor(var.export_window_years / 2)
+  #
+  # Counted in months because half an odd window is not a whole number of years.
+  # Rounding down would renew earlier than the README says it does.
+  export_renewal_months = var.export_window_years * 6
 
   # A second time provider resource would hold the end date against a base that
   # Terraform plans to replace, and the two disagree during a run that both
