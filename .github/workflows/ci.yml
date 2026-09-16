@@ -109,9 +109,29 @@ jobs:
             exit 0
           fi
 
-          tag="v${version}"
-          if gh api "repos/${REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
-            echo "${tag} is already tagged. Raise VERSION above it." >&2
+          # Releases only go up. Comparing against the base rather than against
+          # the highest tag keeps this to one rule: VERSION on main is what gets
+          # tagged, so main's copy is the floor for anything branched off it.
+          if [ -n "${base_version}" ] \
+            && [ "$(printf '%s\n%s\n' "${version}" "${base_version}" | sort -V | head -n 1)" = "${version}" ]; then
+            echo "VERSION moves down from ${base_version} to ${version}. A release has to raise it." >&2
             exit 1
           fi
-          echo "Merging this pull request tags ${tag}."
+
+          tag="v${version}"
+          probe=0
+          .github/scripts/tag-exists.sh "${REPOSITORY}" "${tag}" || probe=$?
+          case "${probe}" in
+            0)
+              echo "${tag} is already tagged. Raise VERSION above it." >&2
+              exit 1
+              ;;
+            1)
+              echo "Merging this pull request tags ${tag}."
+              ;;
+            *)
+              # tag-exists.sh has already said what went wrong. Fail rather than
+              # assume the tag is free.
+              exit 1
+              ;;
+          esac

@@ -4,10 +4,10 @@ on:
   push:
     branches:
       - main
-    # A merge that leaves VERSION alone releases nothing, so the job never
-    # starts for one. The guard on an existing tag below still matters: a push
-    # can restore a VERSION that is already tagged, through a revert or a
-    # reverted revert.
+    # A merge that does not touch VERSION releases nothing, so the job never
+    # starts for one. Editing only the comments in VERSION does start it, and so
+    # does a revert that restores an already-tagged version. The guard below
+    # ends both without tagging anything.
     paths:
       - VERSION
 
@@ -36,10 +36,20 @@ jobs:
           set -euo pipefail
 
           tag="v$(.github/scripts/read-version.sh)"
-          if gh api "repos/${REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
-            echo "${tag} already exists. This push released nothing."
-            exit 0
-          fi
+          probe=0
+          .github/scripts/tag-exists.sh "${REPOSITORY}" "${tag}" || probe=$?
+          case "${probe}" in
+            0)
+              echo "${tag} already exists. This push released nothing."
+              exit 0
+              ;;
+            1) ;;
+            *)
+              # tag-exists.sh has already said what went wrong. Stop rather than
+              # push a tag that may collide.
+              exit 1
+              ;;
+          esac
 
           gh api "repos/${REPOSITORY}/git/refs" \
             -f "ref=refs/tags/${tag}" \

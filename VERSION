@@ -4,9 +4,9 @@
 # merge that leaves it alone tags nothing, so bump the version in the same pull
 # request as the change it releases.
 #
-# Write a bare MAJOR.MINOR.PATCH version. The v belongs to the tag, not to this
-# file. CI fails a pull request that picks a version that already carries a
-# tag, so raise the number rather than reuse one.
+# Write a bare MAJOR.MINOR.PATCH version, with no leading zeros. The v belongs
+# to the tag, not to this file. Releases only go up, so CI fails a pull request
+# that lowers the version or picks one that already carries a tag.
 #
 # A # starts a comment anywhere on a line, and blank lines are ignored. What
 # remains must be one version and nothing else.
