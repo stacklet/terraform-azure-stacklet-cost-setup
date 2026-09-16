@@ -136,10 +136,9 @@ default and the module renews it after five. Both come from
 half-way point, and it rewrites the dates on the export in place. Renewal does
 not touch cost data already in the Storage Account.
 
-No one has to watch a date, as long as someone applies the module from time to
-time. A deployment left untouched for longer than the window stops exporting
-when the end date passes. Applying it again puts it back on schedule. Changing
-`export_window_years` also starts a fresh window from the time of the apply,
+If an apply does not happen between the half-way point and the expiration, the
+export stops. Applying again puts it back on schedule. Changing
+`export_window_years` also forces a fresh window from the time of the apply,
 so a shorter window never lands in the past.
 
 Azure rejects an export written with a stale start date. The module keeps the
