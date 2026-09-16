@@ -101,7 +101,10 @@ jobs:
           base_version=""
           if git cat-file -e "${BASE}:VERSION" 2>/dev/null; then
             git show "${BASE}:VERSION" > "${RUNNER_TEMP}/base-VERSION"
-            base_version="$(.github/scripts/read-version.sh "${RUNNER_TEMP}/base-VERSION" 2>/dev/null || true)"
+            # `|| true` covers a base revision whose VERSION does not parse, which
+            # leaves base_version empty and skips the downgrade rule below. The
+            # parser's own diagnostic is left on stderr so the log says why.
+            base_version="$(.github/scripts/read-version.sh "${RUNNER_TEMP}/base-VERSION" || true)"
           fi
 
           if [ "${version}" = "${base_version}" ]; then

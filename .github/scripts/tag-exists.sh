@@ -15,19 +15,25 @@ set -eu
 
 repo="$1"
 tag="$2"
-err="$(mktemp)"
 
-if gh api "repos/${repo}/git/ref/tags/${tag}" >/dev/null 2>"$err"; then
-    rm -f "$err"
+# Redirection order is load-bearing: 2>&1 aims stderr at the capture, then
+# >/dev/null drops the response body. Reversed, both go to /dev/null and the
+# diagnostic below prints nothing. gh puts the 404 body on stdout and the
+# "(HTTP 404)" line on stderr, so stderr is the half worth keeping.
+#
+# Captured rather than written to a temp file so that no failure of mktemp can
+# exit 1 here, which would read as a confirmed absence.
+rc=0
+err="$(gh api "repos/${repo}/git/ref/tags/${tag}" 2>&1 >/dev/null)" || rc=$?
+
+if [ "$rc" -eq 0 ]; then
     exit 0
 fi
 
-if grep -q '(HTTP 404)' "$err"; then
-    rm -f "$err"
-    exit 1
-fi
+case "$err" in
+    *'(HTTP 404)'*) exit 1 ;;
+esac
 
 echo "Could not determine whether ${tag} exists in ${repo}:" >&2
-sed 's/^/  /' "$err" >&2
-rm -f "$err"
+printf '%s\n' "$err" | sed 's/^/  /' >&2
 exit 2

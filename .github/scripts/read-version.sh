@@ -9,8 +9,9 @@
 #
 # Padding around the version is trimmed, but whitespace inside it is not: `1.
 # 0.0` is a typo rather than a version, and deleting every blank would turn it
-# into a tag. Leading zeros are rejected for the same reason, and because
-# semantic versioning does not allow them.
+# into a tag. The trim covers carriage returns, so a VERSION committed with CRLF
+# endings parses rather than failing on an invisible character. Leading zeros are
+# rejected because semantic versioning does not allow them.
 #
 # The pull request check and the tag job both read the version through this, so
 # neither can accept a version the other rejects.
@@ -18,7 +19,7 @@ set -eu
 
 file="${1:-VERSION}"
 
-version="$(sed -e 's/#.*//' -e 's/^[[:blank:]]*//' -e 's/[[:blank:]]*$//' "$file" | grep -v '^$' || true)"
+version="$(sed -e 's/#.*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$file" | grep -v '^$' || true)"
 
 count="$(printf '%s\n' "$version" | grep -c . || true)"
 if [ "$count" -ne 1 ]; then
