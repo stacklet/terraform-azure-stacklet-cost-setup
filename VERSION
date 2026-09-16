@@ -10,4 +10,8 @@
 #
 # A # starts a comment anywhere on a line, and blank lines are ignored. What
 # remains must be one version and nothing else.
+#
+# Raising the version here also means repointing the three `?ref=` pins in the
+# README examples. Leave the `## Migrating to ...` heading alone: it names the
+# release it describes, not the current one.
 1.0.0
