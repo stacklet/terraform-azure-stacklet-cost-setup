@@ -1,0 +1,47 @@
+name: Tag
+
+on:
+  push:
+    branches:
+      - main
+    # A merge that leaves VERSION alone releases nothing, so the job never
+    # starts for one. The guard on an existing tag below still matters: a push
+    # can restore a VERSION that is already tagged, through a revert or a
+    # reverted revert.
+    paths:
+      - VERSION
+
+permissions: {}
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The tag is created through the API rather than pushed, so the checkout
+      # keeps no credentials. A tag made with GITHUB_TOKEN starts no further
+      # workflow runs, which is why nothing here listens for one.
+      - name: Tag the version in VERSION
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          tag="v$(.github/scripts/read-version.sh)"
+          if gh api "repos/${REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "${tag} already exists. This push released nothing."
+            exit 0
+          fi
+
+          gh api "repos/${REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/${tag}" \
+            -f "sha=${COMMIT}" >/dev/null
+          echo "Tagged ${COMMIT} as ${tag}."

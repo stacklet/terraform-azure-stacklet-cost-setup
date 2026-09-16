@@ -58,6 +58,17 @@ After the apply, `terraform output output` reports the storage account name,
 the container URL, and the subscription ID. Those are what the documentation
 asks you to hand over. You do not need to collect anything from the portal.
 
+## Versioning
+
+Releases carry a `vMAJOR.MINOR.PATCH` tag. Pin `source` to one:
+
+```hcl
+source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
+```
+
+A major bump means the root module that calls this one needs work before it
+moves. Read the migration notes for that release first.
+
 ## Provider Configuration
 
 This module does not configure providers. The calling module must configure
@@ -71,9 +82,6 @@ through environment variables (`ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`,
 `ARM_TENANT_ID`) or set `client_id`, `client_secret`, and `tenant_id` directly
 on the provider block.
 
-This module has no tagged releases yet, so pin `source` to a commit on `main`
-rather than to a version.
-
 ### Standalone deployment
 
 Applying the cost export to a single subscription:
@@ -85,7 +93,7 @@ provider "azurerm" {
 }
 
 module "azure_cost_setup" {
-  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<commit-sha>"
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
 
   customer_prefix         = "your-prefix"
   resource_group_location = "eastus"
@@ -111,7 +119,7 @@ provider "azurerm" {
 }
 
 module "azure_cost_setup_workload" {
-  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<commit-sha>"
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
 
   providers = {
     azurerm = azurerm.workload
@@ -153,13 +161,13 @@ terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_sta
 Use your own module block name. Terraform reports no changes rather than an
 error when a `-replace` address matches nothing.
 
-## Migrating from a previous version
+## Migrating to 1.0.0
 
-There are no release tags yet, so check the copy you have pinned rather than a
-version number. If it declares its own `azurerm` provider block, that is the
-block this change removes. A root module that supplied no provider relied on
-it. Add an `azurerm` provider block to your root module and set
-`subscription_id` on it.
+1.0.0 is the first tagged release, so a copy pinned before it carries no version
+number to compare against. Check that copy itself. If it declares its own
+`azurerm` provider block, that is the block this release removes. A root module
+that supplied no provider relied on it. Add an `azurerm` provider block to your
+root module and set `subscription_id` on it.
 
 If you apply this repository directly from a checkout, azurerm now stops at plan
 and asks for explicit configuration, because its `features` block has no

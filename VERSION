@@ -1,0 +1,13 @@
+# The module version, and the source of the release tag.
+#
+# A merge to main that changes the version tags that commit as v<version>. A
+# merge that leaves it alone tags nothing, so bump the version in the same pull
+# request as the change it releases.
+#
+# Write a bare MAJOR.MINOR.PATCH version. The v belongs to the tag, not to this
+# file. CI fails a pull request that picks a version that already carries a
+# tag, so raise the number rather than reuse one.
+#
+# A # starts a comment anywhere on a line, and blank lines are ignored. What
+# remains must be one version and nothing else.
+1.0.0

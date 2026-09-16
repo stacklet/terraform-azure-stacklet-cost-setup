@@ -69,3 +69,49 @@ jobs:
         run: |
           terraform init -backend=false
           terraform validate
+
+  check-version:
+    runs-on: ubuntu-latest
+    # On a push to main the tag job reads VERSION. This check runs earlier, so
+    # a version the tag job rejects fails the pull request instead of the merge.
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Both revisions are read through the head revision of the script, and
+      # the comparison is on the parsed versions rather than on the file. A
+      # pull request that only edits the comments in VERSION releases nothing
+      # and must not fail here.
+      - name: Check the version this pull request releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          version="$(.github/scripts/read-version.sh)"
+
+          base_version=""
+          if git cat-file -e "${BASE}:VERSION" 2>/dev/null; then
+            git show "${BASE}:VERSION" > "${RUNNER_TEMP}/base-VERSION"
+            base_version="$(.github/scripts/read-version.sh "${RUNNER_TEMP}/base-VERSION" 2>/dev/null || true)"
+          fi
+
+          if [ "${version}" = "${base_version}" ]; then
+            echo "VERSION still reads ${version}, so merging this releases nothing."
+            exit 0
+          fi
+
+          tag="v${version}"
+          if gh api "repos/${REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "${tag} is already tagged. Raise VERSION above it." >&2
+            exit 1
+          fi
+          echo "Merging this pull request tags ${tag}."
