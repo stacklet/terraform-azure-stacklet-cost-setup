@@ -127,11 +127,11 @@ One service principal can serve every subscription. Pass its object ID in each
 module block. The module grants it read access on each Storage Account it
 creates.
 
-## The export window
+## The cost export window
 
-The `azurerm` provider requires an end date on an export, so the module writes
-a window rather than an open-ended schedule. The window is ten years long by
-default and the module renews it after five. Both come from
+The `azurerm` provider requires an end date on a cost export, so the module
+writes a window rather than an open-ended schedule. The window is ten years
+long by default and the module renews it after five. Both come from
 `export_window_years`. Renewal happens on the next plan and apply after the
 half-way point, and it rewrites the dates on the export in place. Renewal does
 not touch cost data already in the Storage Account.
@@ -141,18 +141,17 @@ export stops. Applying again puts it back on schedule. Changing
 `export_window_years` also forces a fresh window from the time of the apply,
 so a shorter window never lands in the past.
 
-Azure rejects an export written with a stale start date. The module keeps the
-start current for every change it makes itself, but it cannot see an export
-deleted in the portal or replaced by hand. After either, replace the start date
-as well, so the new export gets a current one:
+Deleting the export by hand, or recreating it outside a normal apply, leaves the
+module holding a start date Azure no longer accepts, and the next apply fails
+with `'from' value cannot be in the past`. That does not self-correct, because
+the resource to replace is the start date rather than the export:
 
 ```
 terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_start
 ```
 
-Use the name of your own module block. Terraform matches `-replace` against the
-address in your root state, and it reports no changes rather than an error when
-nothing matches, so a target without the module prefix looks like it worked.
+Use your own module block name. Terraform reports no changes rather than an
+error when a `-replace` address matches nothing.
 
 ## Migrating from a previous version
 
@@ -223,7 +222,7 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_customer_prefix"></a> [customer\_prefix](#input\_customer\_prefix) | Stacklet provided customer prefix | `string` | n/a | yes |
-| <a name="input_export_window_years"></a> [export\_window\_years](#input\_export\_window\_years) | Length in years of the cost export schedule. The module renews the window once half of it passes, so this is not a deadline to track. A change starts a fresh window from the time of the apply. | `number` | `10` | no |
+| <a name="input_export_window_years"></a> [export\_window\_years](#input\_export\_window\_years) | Length in years of the cost export schedule. The module renews the window once half of it passes, and changing this forces a fresh window from the time of the apply. Renewal needs an apply to happen. See the cost export window section of the README. | `number` | `10` | no |
 | <a name="input_resource_group_location"></a> [resource\_group\_location](#input\_resource\_group\_location) | Resource group deployment location | `string` | n/a | yes |
 | <a name="input_stacklet_principal_id"></a> [stacklet\_principal\_id](#input\_stacklet\_principal\_id) | Object ID of the Entra ID service principal that Stacklet reads the cost export with. This is the service principal's object ID, not the application (client) ID of the app registration behind it. | `string` | n/a | yes |
 

@@ -21,7 +21,7 @@ variable "stacklet_principal_id" {
 variable "export_window_years" {
   type        = number
   default     = 10
-  description = "Length in years of the cost export schedule. The module renews the window once half of it passes, so this is not a deadline to track. A change starts a fresh window from the time of the apply."
+  description = "Length in years of the cost export schedule. The module renews the window once half of it passes, and changing this forces a fresh window from the time of the apply. Renewal needs an apply to happen. See the cost export window section of the README."
 
   validation {
     # 292 years is the ceiling. timeadd takes hours, and Go rejects the 293 year
