@@ -127,6 +127,32 @@ One service principal can serve every subscription. Pass its object ID in each
 module block. The module grants it read access on each Storage Account it
 creates.
 
+## The cost export window
+
+The `azurerm` provider requires an end date on a cost export, so the module
+writes a window rather than an open-ended schedule. The window is ten years
+long by default and the module renews it after five. Both come from
+`export_window_years`. Renewal happens on the next plan and apply after the
+half-way point, and it rewrites the dates on the export in place. Renewal does
+not touch cost data already in the Storage Account.
+
+If an apply does not happen between the half-way point and the expiration, the
+export stops. Applying again puts it back on schedule. Changing
+`export_window_years` also forces a fresh window from the time of the apply,
+so a shorter window never lands in the past.
+
+Deleting the export by hand, or recreating it outside a normal apply, leaves the
+module holding a start date Azure no longer accepts, and the next apply fails
+with `'from' value cannot be in the past`. That does not self-correct, because
+the resource to replace is the start date rather than the export:
+
+```
+terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_start
+```
+
+Use your own module block name. Terraform reports no changes rather than an
+error when a `-replace` address matches nothing.
+
 ## Migrating from a previous version
 
 There are no release tags yet, so check the copy you have pinned rather than a
@@ -164,6 +190,7 @@ change. Anything reading it needs a rename and nothing more.
 | <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.9.0, < 2.0.0 |
 | <a name="requirement_azurerm"></a> [azurerm](#requirement\_azurerm) | >= 4.0.0, < 5.0.0 |
 | <a name="requirement_random"></a> [random](#requirement\_random) | >= 3.8.1, < 4.0.0 |
+| <a name="requirement_time"></a> [time](#requirement\_time) | >= 0.10.0, < 1.0.0 |
 
 ## Providers
 
@@ -171,6 +198,7 @@ change. Anything reading it needs a rename and nothing more.
 |------|---------|
 | <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | >= 4.0.0, < 5.0.0 |
 | <a name="provider_random"></a> [random](#provider\_random) | >= 3.8.1, < 4.0.0 |
+| <a name="provider_time"></a> [time](#provider\_time) | >= 0.10.0, < 1.0.0 |
 
 ## Modules
 
@@ -186,6 +214,7 @@ No modules.
 | [azurerm_storage_container.cost](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_container) | resource |
 | [azurerm_subscription_cost_management_export.cost](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/subscription_cost_management_export) | resource |
 | [random_string.storage_account_suffix](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/string) | resource |
+| [time_rotating.export_window_start](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/rotating) | resource |
 | [azurerm_subscription.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/subscription) | data source |
 
 ## Inputs
@@ -193,6 +222,7 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_customer_prefix"></a> [customer\_prefix](#input\_customer\_prefix) | Stacklet provided customer prefix | `string` | n/a | yes |
+| <a name="input_export_window_years"></a> [export\_window\_years](#input\_export\_window\_years) | Length in years of the cost export schedule. The module renews the window once half of it passes, and changing this forces a fresh window from the time of the apply. Renewal needs an apply to happen. See the cost export window section of the README. | `number` | `10` | no |
 | <a name="input_resource_group_location"></a> [resource\_group\_location](#input\_resource\_group\_location) | Resource group deployment location | `string` | n/a | yes |
 | <a name="input_stacklet_principal_id"></a> [stacklet\_principal\_id](#input\_stacklet\_principal\_id) | Object ID of the Entra ID service principal that Stacklet reads the cost export with. This is the service principal's object ID, not the application (client) ID of the app registration behind it. | `string` | n/a | yes |
 
