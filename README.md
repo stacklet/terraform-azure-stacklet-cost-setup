@@ -66,6 +66,15 @@ Releases carry a `vMAJOR.MINOR.PATCH` tag. Pin `source` to one:
 source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
 ```
 
+A published tag keeps naming the same commit, because repository rules block
+updates and deletions on `v*`. A tag is still a mutable pointer by nature, so
+pin the commit itself if you would rather not rely on a repository setting. The
+tag names the commit directly:
+
+```
+git ls-remote https://github.com/stacklet/terraform-azure-stacklet-cost-setup refs/tags/v1.0.0
+```
+
 A major bump means the root module that calls this one needs work before it
 moves. Read the migration notes for that release first.
 

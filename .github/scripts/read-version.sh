@@ -13,8 +13,10 @@
 # endings parses rather than failing on an invisible character. Leading zeros are
 # rejected because semantic versioning does not allow them.
 #
-# The pull request check and the tag job both read the version through this, so
-# neither can accept a version the other rejects.
+# Both the pull request check and the tag job parse through this, so they cannot
+# disagree on whether a version is well formed. They do not otherwise agree: the
+# pull request check adds rules of its own, the downgrade guard among them, that
+# the tag job does not repeat.
 set -eu
 
 file="${1:-VERSION}"
