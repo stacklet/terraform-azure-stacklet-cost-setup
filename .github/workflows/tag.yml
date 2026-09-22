@@ -5,9 +5,9 @@ on:
     branches:
       - main
     # A merge that does not touch VERSION releases nothing, so the job never
-    # starts for one. Editing only the comments in VERSION does start it, and so
-    # does a revert that restores an already-tagged version. The guard below
-    # ends both without tagging anything.
+    # starts for one. Editing only the comments in VERSION does start it, and
+    # the guard below ends that quietly. A revert that restores an already
+    # tagged version moves the version, so it stops at the same guard loudly.
     paths:
       - VERSION
 
@@ -22,6 +22,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The guard below reads VERSION at the previous tip of main, so that
+          # commit has to be in the local repository.
+          fetch-depth: 0
           persist-credentials: false
 
       # The tag is created through the API rather than pushed, so the checkout
@@ -32,16 +35,40 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           COMMIT: ${{ github.sha }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
 
-          tag="v$(.github/scripts/read-version.sh)"
+          version="$(.github/scripts/read-version.sh)"
+          tag="v${version}"
+
+          # What the previous tip of main released. An existing tag is expected
+          # when the version did not move, and is somebody else's when it did.
+          previous=""
+          if git cat-file -e "${BEFORE}:VERSION" 2>/dev/null; then
+            git show "${BEFORE}:VERSION" > "${RUNNER_TEMP}/before-VERSION"
+            previous="$(.github/scripts/read-version.sh "${RUNNER_TEMP}/before-VERSION" || true)"
+          fi
+
           probe=0
           .github/scripts/tag-exists.sh "${REPOSITORY}" "${tag}" || probe=$?
           case "${probe}" in
             0)
-              echo "${tag} already exists. This push released nothing."
-              exit 0
+              existing="$(gh api "repos/${REPOSITORY}/git/ref/tags/${tag}" --jq '.object.sha')"
+              if [ "${existing}" = "${COMMIT}" ]; then
+                echo "${tag} already points at ${COMMIT}. Nothing to do."
+                exit 0
+              fi
+              if [ "${version}" = "${previous}" ]; then
+                echo "VERSION still reads ${version}, so this push released nothing."
+                exit 0
+              fi
+              # The version moved, so this push meant to publish, and something
+              # else already holds the tag. Exiting clean here would leave the
+              # tag naming code this commit never produced.
+              echo "VERSION moved to ${version}, but ${tag} already points at ${existing}." >&2
+              echo "This push did not create it, so ${tag} does not contain ${COMMIT}." >&2
+              exit 1
               ;;
             1) ;;
             *)
