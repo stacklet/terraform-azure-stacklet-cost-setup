@@ -72,8 +72,9 @@ jobs:
 
   check-version:
     runs-on: ubuntu-latest
-    # On a push to main the tag job reads VERSION. This check runs earlier, so
-    # a version the tag job rejects fails the pull request instead of the merge.
+    # On a push to main the release job reads VERSION. This check runs earlier,
+    # so a version the release job rejects fails the pull request instead of
+    # the merge.
     if: github.event_name == 'pull_request'
     permissions:
       contents: read

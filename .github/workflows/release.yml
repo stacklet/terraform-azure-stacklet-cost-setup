@@ -1,4 +1,4 @@
-name: Tag
+name: Release
 
 on:
   push:
@@ -7,14 +7,14 @@ on:
     # A merge that does not touch VERSION releases nothing, so the job never
     # starts for one. Editing only the comments in VERSION does start it, and
     # the guard below ends that quietly. A revert that restores an already
-    # tagged version moves the version, so it stops at the same guard loudly.
+    # released version moves the version, so it stops at the later guard loudly.
     paths:
       - VERSION
 
 permissions: {}
 
 jobs:
-  tag:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -27,10 +27,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # The tag is created through the API rather than pushed, so the checkout
-      # keeps no credentials. A tag made with GITHUB_TOKEN starts no further
-      # workflow runs, which is why nothing here listens for one.
-      - name: Tag the version in VERSION
+      # The release is published through the API rather than pushed, so the
+      # checkout keeps no credentials. A tag made with GITHUB_TOKEN starts no
+      # further workflow runs, which is why nothing here listens for one.
+      #
+      # The organization publishes immutable releases, so publishing is what
+      # locks the tag to this commit and burns the name against reuse. Nothing
+      # in this repository has to protect the tag afterwards.
+      - name: Publish the release named in VERSION
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -42,43 +46,47 @@ jobs:
           version="$(.github/scripts/read-version.sh)"
           tag="v${version}"
 
-          # What the previous tip of main released. An existing tag is expected
-          # when the version did not move, and is somebody else's when it did.
+          # What the previous tip of main released. Comparing before asking the
+          # API keeps the common no-op, a comment-only edit to VERSION, from
+          # touching the network at all.
           previous=""
           if git cat-file -e "${BEFORE}:VERSION" 2>/dev/null; then
             git show "${BEFORE}:VERSION" > "${RUNNER_TEMP}/before-VERSION"
             previous="$(.github/scripts/read-version.sh "${RUNNER_TEMP}/before-VERSION" || true)"
           fi
 
+          if [ "${version}" = "${previous}" ]; then
+            echo "VERSION still reads ${version}, so this push released nothing."
+            exit 0
+          fi
+
+          # check-version refused this version if the tag already existed when
+          # the pull request ran. One appearing between then and now would make
+          # the release below adopt it instead of creating it, publishing a
+          # release that names a commit this push never built.
           probe=0
           .github/scripts/tag-exists.sh "${REPOSITORY}" "${tag}" || probe=$?
           case "${probe}" in
             0)
               existing="$(gh api "repos/${REPOSITORY}/git/ref/tags/${tag}" --jq '.object.sha')"
               if [ "${existing}" = "${COMMIT}" ]; then
-                echo "${tag} already points at ${COMMIT}. Nothing to do."
+                echo "${tag} already names ${COMMIT}. Nothing to do."
                 exit 0
               fi
-              if [ "${version}" = "${previous}" ]; then
-                echo "VERSION still reads ${version}, so this push released nothing."
-                exit 0
-              fi
-              # The version moved, so this push meant to publish, and something
-              # else already holds the tag. Exiting clean here would leave the
-              # tag naming code this commit never produced.
-              echo "VERSION moved to ${version}, but ${tag} already points at ${existing}." >&2
+              echo "VERSION moved to ${version}, but ${tag} already names ${existing}." >&2
               echo "This push did not create it, so ${tag} does not contain ${COMMIT}." >&2
               exit 1
               ;;
             1) ;;
             *)
               # tag-exists.sh has already said what went wrong. Stop rather than
-              # push a tag that may collide.
+              # publish a release that may adopt a tag this push did not create.
               exit 1
               ;;
           esac
 
-          gh api "repos/${REPOSITORY}/git/refs" \
-            -f "ref=refs/tags/${tag}" \
-            -f "sha=${COMMIT}" >/dev/null
-          echo "Tagged ${COMMIT} as ${tag}."
+          gh release create "${tag}" \
+            --target "${COMMIT}" \
+            --title "${tag}" \
+            --generate-notes
+          echo "Released ${COMMIT} as ${tag}."

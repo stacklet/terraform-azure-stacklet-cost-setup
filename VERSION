@@ -1,8 +1,8 @@
-# The module version, and the source of the release tag.
+# The module version, and the source of the release.
 #
-# A merge to main that changes the version tags that commit as v<version>. A
-# merge that leaves it alone tags nothing, so bump the version in the same pull
-# request as the change it releases.
+# A merge to main that changes the version publishes a release tagged
+# v<version>. A merge that leaves it alone publishes nothing, so bump the
+# version in the same pull request as the change it releases.
 #
 # Write a bare MAJOR.MINOR.PATCH version, with no leading zeros. The v belongs
 # to the tag, not to this file. Releases only go up, so CI fails a pull request
