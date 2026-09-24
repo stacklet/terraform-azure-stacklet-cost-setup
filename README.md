@@ -58,6 +58,22 @@ After the apply, `terraform output output` reports the storage account name,
 the container URL, and the subscription ID. Those are what the documentation
 asks you to hand over. You do not need to collect anything from the portal.
 
+## Versioning
+
+Releases carry a `vMAJOR.MINOR.PATCH` tag. Pin `source` to one:
+
+```hcl
+source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
+```
+
+The organization publishes immutable releases, so a published tag is locked to
+the commit it was cut from. It cannot be moved or deleted, and the name cannot
+be reused even if the release itself is deleted, so `v1.0.0` names the same code
+for good.
+
+A major bump means the root module that calls this one needs work before it
+moves. Read the notes on the release first.
+
 ## Provider Configuration
 
 This module does not configure providers. The calling module must configure
@@ -153,7 +169,7 @@ terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_sta
 Use your own module block name. Terraform reports no changes rather than an
 error when a `-replace` address matches nothing.
 
-## Migrating from a previous version
+## Migrating to 1.0.0
 
 There are no release tags yet, so check the copy you have pinned rather than a
 version number. If it declares its own `azurerm` provider block, that is the

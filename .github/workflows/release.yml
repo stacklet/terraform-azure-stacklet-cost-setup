@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to raise
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: Work out the next version and stop without publishing
+        required: false
+        type: boolean
+        default: false
+
+# Two runs would otherwise read the same latest tag and try to claim the same
+# version. The second one fails at the release step rather than corrupting
+# anything, but serialising keeps that from happening at all.
+concurrency: release
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # workflow_dispatch takes a ref, so this job can be started against any
+      # branch. A release cut from a topic branch would name code that never
+      # merged, and immutability makes that permanent.
+      - name: Refuse to release from anywhere but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Releases are cut from main. This run targeted ${GITHUB_REF}." >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The next version is derived from the tag history, and the action
+          # walks the local checkout when the compare API is unavailable.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Works out the version and stops. `push: false` leaves every ref write to
+      # the release step, so a single step owns the tag. Splitting them would let
+      # a failure halfway through stand up a bare tag with no release, which is
+      # both mutable and in the way of the retry.
+      - name: Work out the next version
+        id: version
+        uses: mathieudutour/github-tag-action@af99e60ce8132224b8e6ebab5023449fe256ed46 # v7
+        with:
+          github_token: ${{ github.token }}
+          force_bump: ${{ inputs.bump }}
+          push: false
+
+      - name: Report the version
+        env:
+          PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Previous | ${PREVIOUS_TAG} |"
+            echo "| New | ${NEW_TAG} |"
+            echo "| Dry run | ${DRY_RUN} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      # Publishing the release is what locks the tag, so the tag is created here
+      # rather than by the step above.
+      #
+      # Nothing guards against the tag already existing, because the step above
+      # derives the version by incrementing the highest tag, so the name it
+      # hands over cannot already be taken. Worth knowing if that ever changes:
+      # this creates a release on an existing tag rather than refusing, and
+      # ignores --target when it does.
+      #
+      # zizmor rejects a release action here as work the runner already does,
+      # which is why this is the CLI rather than ncipollo/release-action.
+      - name: Publish the release
+        if: ${{ !inputs.dry_run && steps.version.outputs.new_tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.new_tag }}
+          COMMIT: ${{ github.sha }}
+          NOTES: ${{ steps.version.outputs.changelog }}
+        run: |
+          set -euo pipefail
+          gh release create "${TAG}" \
+            --target "${COMMIT}" \
+            --title "${TAG}" \
+            --notes "${NOTES}"
