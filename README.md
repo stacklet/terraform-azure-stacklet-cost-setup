@@ -67,9 +67,10 @@ source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
 ```
 
 The organization publishes immutable releases, so a published tag is locked to
-the commit it was cut from. It cannot be moved or deleted, and the name cannot
-be reused even if the release itself is deleted, so `v1.0.0` names the same code
-for good.
+the commit it was cut from. It cannot be moved, and the name cannot be reused
+even after the release that carries it is deleted. A release can be deleted, so
+`v1.0.0` either names the code it was cut from or names nothing. It never names
+anything else.
 
 A major bump means the root module that calls this one needs work before it
 moves. Read the notes on the release first.
@@ -87,9 +88,6 @@ through environment variables (`ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`,
 `ARM_TENANT_ID`) or set `client_id`, `client_secret`, and `tenant_id` directly
 on the provider block.
 
-This module has no tagged releases yet, so pin `source` to a commit on `main`
-rather than to a version.
-
 ### Standalone deployment
 
 Applying the cost export to a single subscription:
@@ -101,7 +99,7 @@ provider "azurerm" {
 }
 
 module "azure_cost_setup" {
-  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<commit-sha>"
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
 
   customer_prefix         = "your-prefix"
   resource_group_location = "eastus"
@@ -127,7 +125,7 @@ provider "azurerm" {
 }
 
 module "azure_cost_setup_workload" {
-  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=<commit-sha>"
+  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
 
   providers = {
     azurerm = azurerm.workload
@@ -171,11 +169,11 @@ error when a `-replace` address matches nothing.
 
 ## Migrating to 1.0.0
 
-There are no release tags yet, so check the copy you have pinned rather than a
-version number. If it declares its own `azurerm` provider block, that is the
-block this change removes. A root module that supplied no provider relied on
-it. Add an `azurerm` provider block to your root module and set
-`subscription_id` on it.
+1.0.0 is the first tagged release, so whatever you have now is pinned to a
+commit rather than to a version. Read that copy rather than a version number.
+If it declares its own `azurerm` provider block, that is the block 1.0.0
+removes. A root module that supplied no provider relied on it. Add an `azurerm`
+provider block to your root module and set `subscription_id` on it.
 
 If you apply this repository directly from a checkout, azurerm now stops at plan
 and asks for explicit configuration, because its `features` block has no
