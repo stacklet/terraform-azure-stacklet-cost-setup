@@ -4,9 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Which part of the version to raise
+        description: Which part of the version to raise. The first release has to be major, because the count starts from 0.0.0.
         required: true
         type: choice
+        default: patch
         options:
           - patch
           - minor
@@ -19,22 +20,28 @@ on:
 
 # Two runs would otherwise read the same latest tag and try to claim the same
 # version. The second one fails at the release step rather than corrupting
-# anything, but serialising keeps that from happening at all.
+# anything, but serialising keeps that from happening at all. Only one run
+# queues behind the active one, so a third dispatch drops the second.
 concurrency: release
 
 permissions: {}
 
 jobs:
-  release:
+  # Split from `publish` so that the third-party action never runs under a token
+  # that can write refs. This job reads; only the job below can publish.
+  version:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      new_tag: ${{ steps.version.outputs.new_tag }}
+      changelog: ${{ steps.version.outputs.changelog }}
     steps:
       # workflow_dispatch takes a ref, so this job can be started against any
       # branch. A release cut from a topic branch would name code that never
       # merged, and immutability makes that permanent.
       - name: Refuse to release from anywhere but main
-        if: github.ref != 'refs/heads/main'
+        if: ${{ github.ref != 'refs/heads/main' }}
         run: |
           echo "Releases are cut from main. This run targeted ${GITHUB_REF}." >&2
           exit 1
@@ -48,7 +55,7 @@ jobs:
           persist-credentials: false
 
       # Works out the version and stops. `push: false` leaves every ref write to
-      # the release step, so a single step owns the tag. Splitting them would let
+      # the publish job, so a single step owns the tag. Splitting them would let
       # a failure halfway through stand up a bare tag with no release, which is
       # both mutable and in the way of the retry.
       - name: Work out the next version
@@ -73,26 +80,54 @@ jobs:
             echo "| Dry run | ${DRY_RUN} |"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      # Publishing the release is what locks the tag, so the tag is created here
-      # rather than by the step above.
+  publish:
+    needs: version
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Re-running a run stays on offer for 30 days and replays the inputs it
+      # was given. `force_bump` overrides the no-new-commits early return, so a
+      # re-run would work out the version after this one and publish that too.
+      # A stray re-run of a major release spends a whole major version. Retrying
+      # a failed publish means dispatching again, which reads the same latest
+      # tag and so arrives at the same number.
+      - name: Refuse a re-run
+        if: ${{ github.run_attempt != 1 }}
+        run: |
+          echo "Attempt ${GITHUB_RUN_ATTEMPT} of this run. Re-running would publish the" >&2
+          echo "version after the one this run was for. Dispatch the workflow again." >&2
+          exit 1
+
+      # No checkout: the release is cut against a commit SHA and carries no
+      # assets, so nothing from the tree is needed. That also keeps this job,
+      # the one holding `contents: write`, free of third-party actions.
       #
-      # Nothing guards against the tag already existing, because the step above
-      # derives the version by incrementing the highest tag, so the name it
-      # hands over cannot already be taken. Worth knowing if that ever changes:
-      # this creates a release on an existing tag rather than refusing, and
-      # ignores --target when it does.
+      # Publishing the release is what locks the tag, so the tag is created here
+      # rather than by the version job.
+      #
+      # Nothing guards against the tag already existing, because the version job
+      # derives the number by incrementing the highest tag, so the name it hands
+      # over cannot already be taken. Worth knowing if that ever changes: this
+      # creates a release on an existing tag rather than refusing, and ignores
+      # --target when it does.
       #
       # zizmor rejects a release action here as work the runner already does,
       # which is why this is the CLI rather than ncipollo/release-action.
       - name: Publish the release
-        if: ${{ !inputs.dry_run && steps.version.outputs.new_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.new_tag }}
+          TAG: ${{ needs.version.outputs.new_tag }}
           COMMIT: ${{ github.sha }}
-          NOTES: ${{ steps.version.outputs.changelog }}
+          NOTES: ${{ needs.version.outputs.changelog }}
         run: |
           set -euo pipefail
+          if [ -z "${TAG}" ]; then
+            echo "The version job worked out no tag, so there is nothing to publish." >&2
+            echo "That should not happen on main with an explicit bump." >&2
+            exit 1
+          fi
           gh release create "${TAG}" \
             --target "${COMMIT}" \
             --title "${TAG}" \
