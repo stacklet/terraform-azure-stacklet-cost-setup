@@ -80,6 +80,19 @@ jobs:
             echo "| Dry run | ${DRY_RUN} |"
           } >> "${GITHUB_STEP_SUMMARY}"
 
+      # The tag action reports the previous tag as v0.0.0 when no tag exists at
+      # all, so this can only fire on the very first release. A patch bump from
+      # that baseline lands v0.0.1, and immutability makes that permanent, so
+      # the choice is enforced here rather than left to the input description.
+      - name: Require the first release to be major
+        if: ${{ steps.version.outputs.previous_tag == 'v0.0.0' && inputs.bump != 'major' }}
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          echo "This repository has no releases yet, so the first one has to be a" >&2
+          echo "major bump to land v1.0.0. This run asked for ${BUMP}." >&2
+          exit 1
+
   publish:
     needs: version
     if: ${{ !inputs.dry_run }}
@@ -107,12 +120,6 @@ jobs:
       # Publishing the release is what locks the tag, so the tag is created here
       # rather than by the version job.
       #
-      # Nothing guards against the tag already existing, because the version job
-      # derives the number by incrementing the highest tag, so the name it hands
-      # over cannot already be taken. Worth knowing if that ever changes: this
-      # creates a release on an existing tag rather than refusing, and ignores
-      # --target when it does.
-      #
       # zizmor rejects a release action here as work the runner already does,
       # which is why this is the CLI rather than ncipollo/release-action.
       - name: Publish the release
@@ -126,6 +133,18 @@ jobs:
           if [ -z "${TAG}" ]; then
             echo "The version job worked out no tag, so there is nothing to publish." >&2
             echo "That should not happen on main with an explicit bump." >&2
+            exit 1
+          fi
+          # The version job derives the number by incrementing the highest tag,
+          # so the name was free when it ran. A tag pushed from anywhere else
+          # between that job and this one still collides, and `gh release create`
+          # answers a collision by releasing the tag that is already there and
+          # ignoring --target, which publishes an immutable release for a commit
+          # nobody chose. This narrows the window rather than closing it: a tag
+          # created in the moment after the check still lands in it.
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists, so this run would publish a release over" >&2
+            echo "a tag it did not create. Refusing." >&2
             exit 1
           fi
           gh release create "${TAG}" \
