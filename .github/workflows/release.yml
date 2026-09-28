@@ -95,17 +95,29 @@ jobs:
 
   publish:
     needs: version
-    if: ${{ !inputs.dry_run }}
+    # `success()` is implicit on a job `if:` that names no status function, and
+    # it is what keeps the version job's main-branch and first-release guards
+    # binding. It is spelled out because adding `always()` or a `failure()`
+    # branch later would silently detach them, and that fails open rather than
+    # closed: `new_tag` is already set by the time the first-release guard runs.
+    #
+    # `inputs.dry_run`, not `github.event.inputs.dry_run`. The former keeps a
+    # boolean a boolean. The latter yields the string "false", which is truthy,
+    # so the negation would always be false and this job would never run.
+    if: ${{ success() && !inputs.dry_run }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # Re-running a run stays on offer for 30 days and replays the inputs it
-      # was given. `force_bump` overrides the no-new-commits early return, so a
-      # re-run would work out the version after this one and publish that too.
-      # A stray re-run of a major release spends a whole major version. Retrying
-      # a failed publish means dispatching again, which reads the same latest
-      # tag and so arrives at the same number.
+      # Re-running a run stays on offer for 30 days, and the two re-run modes
+      # go wrong in opposite directions. "Re-run all jobs" re-runs the version
+      # job, and because `force_bump` overrides the no-new-commits early return
+      # it works out the version after this one and publishes that as well, so
+      # a stray re-run of a major release spends a whole major version.
+      # "Re-run failed jobs" leaves the succeeded version job alone and replays
+      # its outputs, so it republishes the same tag. run_attempt catches both.
+      # Retrying a failed publish means dispatching again, which reads the same
+      # latest tag and so arrives at the same number.
       - name: Refuse a re-run
         if: ${{ github.run_attempt != 1 }}
         run: |
@@ -116,6 +128,12 @@ jobs:
       # No checkout: the release is cut against a commit SHA and carries no
       # assets, so nothing from the tree is needed. That also keeps this job,
       # the one holding `contents: write`, free of third-party actions.
+      #
+      # The checkout was doing a second job though, which is why --repo appears
+      # below. `gh` resolves the repository from --repo, then GH_REPO, then the
+      # git remotes of the working directory. It never reads GITHUB_REPOSITORY,
+      # so without one of those it exits 1 with "not a git repository". `gh api`
+      # is unaffected because its path is literal.
       #
       # Publishing the release is what locks the tag, so the tag is created here
       # rather than by the version job.
@@ -142,12 +160,24 @@ jobs:
           # ignoring --target, which publishes an immutable release for a commit
           # nobody chose. This narrows the window rather than closing it: a tag
           # created in the moment after the check still lands in it.
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+          #
+          # `git/matching-refs` answers "no such tag" with 200 and an empty
+          # array, so a non-zero exit here means the check itself failed rather
+          # than the name being free. `git/ref/tags/...` answers 404, which is
+          # the same exit status as a 401, a 5xx or a dropped connection, and
+          # would leave the guard passing silently whenever the API misbehaved.
+          # Keeping the call out of an `if` matters for the same reason: errexit
+          # is suppressed for a condition, so this is what fails closed.
+          # matching-refs is a prefix match, hence the exact-ref filter.
+          matches=$(gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/${TAG}" \
+            --jq '[.[] | select(.ref == "refs/tags/" + env.TAG)] | length')
+          if [ "${matches}" != "0" ]; then
             echo "Tag ${TAG} already exists, so this run would publish a release over" >&2
             echo "a tag it did not create. Refusing." >&2
             exit 1
           fi
           gh release create "${TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
             --target "${COMMIT}" \
             --title "${TAG}" \
             --notes "${NOTES}"
