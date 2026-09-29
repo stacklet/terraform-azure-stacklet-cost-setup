@@ -1,0 +1,183 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to raise. The first release has to be major, because the count starts from 0.0.0.
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      dry_run:
+        description: Work out the next version and stop without publishing
+        required: false
+        type: boolean
+        default: false
+
+# Two runs would otherwise read the same latest tag and try to claim the same
+# version. The second one fails at the release step rather than corrupting
+# anything, but serialising keeps that from happening at all. Only one run
+# queues behind the active one, so a third dispatch drops the second.
+concurrency: release
+
+permissions: {}
+
+jobs:
+  # Split from `publish` so that the third-party action never runs under a token
+  # that can write refs. This job reads; only the job below can publish.
+  version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      new_tag: ${{ steps.version.outputs.new_tag }}
+      changelog: ${{ steps.version.outputs.changelog }}
+    steps:
+      # workflow_dispatch takes a ref, so this job can be started against any
+      # branch. A release cut from a topic branch would name code that never
+      # merged, and immutability makes that permanent.
+      - name: Refuse to release from anywhere but main
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "Releases are cut from main. This run targeted ${GITHUB_REF}." >&2
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The next version is derived from the tag history, and the action
+          # walks the local checkout when the compare API is unavailable.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Works out the version and stops. `push: false` leaves every ref write to
+      # the publish job, so a single step owns the tag. Splitting them would let
+      # a failure halfway through stand up a bare tag with no release, which is
+      # both mutable and in the way of the retry.
+      - name: Work out the next version
+        id: version
+        uses: mathieudutour/github-tag-action@af99e60ce8132224b8e6ebab5023449fe256ed46 # v7
+        with:
+          github_token: ${{ github.token }}
+          force_bump: ${{ inputs.bump }}
+          push: false
+
+      - name: Report the version
+        env:
+          PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Previous | ${PREVIOUS_TAG} |"
+            echo "| New | ${NEW_TAG} |"
+            echo "| Dry run | ${DRY_RUN} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      # The tag action reports the previous tag as v0.0.0 when no tag exists at
+      # all, so this can only fire on the very first release. A patch bump from
+      # that baseline lands v0.0.1, and immutability makes that permanent, so
+      # the choice is enforced here rather than left to the input description.
+      - name: Require the first release to be major
+        if: ${{ steps.version.outputs.previous_tag == 'v0.0.0' && inputs.bump != 'major' }}
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          echo "This repository has no releases yet, so the first one has to be a" >&2
+          echo "major bump to land v1.0.0. This run asked for ${BUMP}." >&2
+          exit 1
+
+  publish:
+    needs: version
+    # `success()` is implicit on a job `if:` that names no status function, and
+    # it is what keeps the version job's main-branch and first-release guards
+    # binding. It is spelled out because adding `always()` or a `failure()`
+    # branch later would silently detach them, and that fails open rather than
+    # closed: `new_tag` is already set by the time the first-release guard runs.
+    #
+    # `inputs.dry_run`, not `github.event.inputs.dry_run`. The former keeps a
+    # boolean a boolean. The latter yields the string "false", which is truthy,
+    # so the negation would always be false and this job would never run.
+    if: ${{ success() && !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Re-running a run stays on offer for 30 days, and the two re-run modes
+      # go wrong in opposite directions. "Re-run all jobs" re-runs the version
+      # job, and because `force_bump` overrides the no-new-commits early return
+      # it works out the version after this one and publishes that as well, so
+      # a stray re-run of a major release spends a whole major version.
+      # "Re-run failed jobs" leaves the succeeded version job alone and replays
+      # its outputs, so it republishes the same tag. run_attempt catches both.
+      # Retrying a failed publish means dispatching again, which reads the same
+      # latest tag and so arrives at the same number.
+      - name: Refuse a re-run
+        if: ${{ github.run_attempt != 1 }}
+        run: |
+          echo "Attempt ${GITHUB_RUN_ATTEMPT} of this run. Re-running would publish the" >&2
+          echo "version after the one this run was for. Dispatch the workflow again." >&2
+          exit 1
+
+      # No checkout: the release is cut against a commit SHA and carries no
+      # assets, so nothing from the tree is needed. That also keeps this job,
+      # the one holding `contents: write`, free of third-party actions.
+      #
+      # The checkout was doing a second job though, which is why --repo appears
+      # below. `gh` resolves the repository from --repo, then GH_REPO, then the
+      # git remotes of the working directory. It never reads GITHUB_REPOSITORY,
+      # so without one of those it exits 1 with "not a git repository". `gh api`
+      # is unaffected because its path is literal.
+      #
+      # Publishing the release is what locks the tag, so the tag is created here
+      # rather than by the version job.
+      #
+      # zizmor rejects a release action here as work the runner already does,
+      # which is why this is the CLI rather than ncipollo/release-action.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.new_tag }}
+          COMMIT: ${{ github.sha }}
+          NOTES: ${{ needs.version.outputs.changelog }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAG}" ]; then
+            echo "The version job worked out no tag, so there is nothing to publish." >&2
+            echo "That should not happen on main with an explicit bump." >&2
+            exit 1
+          fi
+          # The version job derives the number by incrementing the highest tag,
+          # so the name was free when it ran. A tag pushed from anywhere else
+          # between that job and this one still collides, and `gh release create`
+          # answers a collision by releasing the tag that is already there and
+          # ignoring --target, which publishes an immutable release for a commit
+          # nobody chose. This narrows the window rather than closing it: a tag
+          # created in the moment after the check still lands in it.
+          #
+          # `git/matching-refs` answers "no such tag" with 200 and an empty
+          # array, so a non-zero exit here means the check itself failed rather
+          # than the name being free. `git/ref/tags/...` answers 404, which is
+          # the same exit status as a 401, a 5xx or a dropped connection, and
+          # would leave the guard passing silently whenever the API misbehaved.
+          # Keeping the call out of an `if` matters for the same reason: errexit
+          # is suppressed for a condition, so this is what fails closed.
+          # matching-refs is a prefix match, hence the exact-ref filter.
+          matches=$(gh api "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/${TAG}" \
+            --jq '[.[] | select(.ref == "refs/tags/" + env.TAG)] | length')
+          if [ "${matches}" != "0" ]; then
+            echo "Tag ${TAG} already exists, so this run would publish a release over" >&2
+            echo "a tag it did not create. Refusing." >&2
+            exit 1
+          fi
+          gh release create "${TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${COMMIT}" \
+            --title "${TAG}" \
+            --notes "${NOTES}"
