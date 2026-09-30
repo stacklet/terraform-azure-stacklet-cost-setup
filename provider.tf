@@ -37,5 +37,9 @@ terraform {
       version = ">= 0.10.0, < 1.0.0"
     }
   }
-  required_version = ">= 1.9.0, < 2.0.0"
+  # The floor is a Terraform line that still receives patches, not the oldest
+  # release that can run this module. The oldest is 1.9, where cross-variable
+  # references in a validation block landed. Nothing is gained by supporting
+  # that far back, and 1.13 and earlier no longer get security fixes.
+  required_version = ">= 1.14.0, < 2.0.0"
 }
