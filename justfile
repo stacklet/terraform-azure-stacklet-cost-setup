@@ -7,7 +7,7 @@ format:
 
 # lint files
 lint:
-    uvx prek run --all-files
+    prek run --all-files
 
 # update module documentation in README
 docs:
