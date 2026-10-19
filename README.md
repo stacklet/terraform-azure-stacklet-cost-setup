@@ -60,20 +60,12 @@ asks you to hand over. You do not need to collect anything from the portal.
 
 ## Versioning
 
-Releases carry a `vMAJOR.MINOR.PATCH` tag. Pin `source` to one:
+This module is published to the [Terraform Registry](https://registry.terraform.io/modules/stacklet/stacklet-cost-setup/azure).
+Set `source` to the registry address and pin `version` to a release.
 
-```hcl
-source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
-```
-
-The organization publishes immutable releases, so a published tag is locked to
-the commit it was cut from. It cannot be moved, and the name cannot be reused
-even after the release that carries it is deleted. A release can be deleted, so
-`v1.0.0` either names the code it was cut from or names nothing. It never names
-anything else.
-
-A major bump means the root module that calls this one needs work before it
-moves. Read the notes on the release first.
+`version` takes the usual constraint syntax, so `~> 1.0` accepts patch and minor
+releases and holds at the next major. A major bump means the root module that
+calls this one needs work before it moves. Read the release notes first.
 
 ## Provider Configuration
 
@@ -99,7 +91,8 @@ provider "azurerm" {
 }
 
 module "azure_cost_setup" {
-  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
+  source  = "stacklet/stacklet-cost-setup/azure"
+  version = "1.0.0"
 
   customer_prefix         = "your-prefix"
   resource_group_location = "eastus"
@@ -125,7 +118,8 @@ provider "azurerm" {
 }
 
 module "azure_cost_setup_workload" {
-  source = "github.com/stacklet/terraform-azure-stacklet-cost-setup?ref=v1.0.0"
+  source  = "stacklet/stacklet-cost-setup/azure"
+  version = "1.0.0"
 
   providers = {
     azurerm = azurerm.workload
@@ -169,11 +163,14 @@ error when a `-replace` address matches nothing.
 
 ## Migrating to 1.0.0
 
-1.0.0 is the first tagged release, so whatever you have now is pinned to a
-commit rather than to a version. Read that copy rather than a version number.
-If it declares its own `azurerm` provider block, that is the block 1.0.0
-removes. A root module that supplied no provider relied on it. Add an `azurerm`
-provider block to your root module and set `subscription_id` on it.
+1.0.0 is the first release, so whatever you have now is pinned to a commit
+rather than to a version. Move `source` to the registry address and set
+`version`, as shown above.
+
+Read your current copy rather than a version number. If it declares its own
+`azurerm` provider block, that is the block 1.0.0 removes. A root module that
+supplied no provider relied on it. Add an `azurerm` provider block to your root
+module and set `subscription_id` on it.
 
 If you apply this repository directly from a checkout, azurerm now stops at plan
 and asks for explicit configuration, because its `features` block has no
