@@ -22,6 +22,36 @@ locals {
   # drops off the window do not matter against a renewal at half of it.
   export_window_end = timeadd(time_rotating.export_window_start.rfc3339, "${var.export_window_years * 8760}h")
 
+  # Everything the export carries apart from its schedule, split out so that
+  # time_rotating can hash it. See the triggers on that resource.
+  export_shape = {
+    format = "Csv"
+
+    # One CSV per run, which is the layout Stacklet reads. This is the default
+    # at this api-version, written out rather than left implicit because
+    # ENG-9630 has to flip it: the api-version it moves to rejects false.
+    partitionData = false
+
+    definition = {
+      type      = "ActualCost"
+      timeframe = "MonthToDate"
+    }
+
+    deliveryInfo = {
+      destination = {
+        resourceId = azurerm_storage_account.cost.id
+        container  = azurerm_storage_container.cost.name
+
+        # The leading slash is deliberate. Azure keeps it in the blob name
+        # rather than resolving it away, so an export that drops it writes
+        # under a prefix no earlier export used. Stacklet walks the container
+        # from its root and reads the two prefixes as separate exports, so the
+        # month a change like that lands in gets counted twice.
+        rootFolderPath = "/cost"
+      }
+    }
+  }
+
   buckets = {
     "azure" : {
       "storage_account" : azurerm_storage_account.cost.name
