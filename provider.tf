@@ -2,10 +2,9 @@
 # alias the providers it passes in.
 #
 # We constrain the providers to the majors this module works against. azurerm
-# deprecates `storage_account_name` and `resource_manager_id` on
-# azurerm_storage_container. Version 5.0 removes them, so this module needs
-# changes before it supports that major. Do not widen these constraints without
-# a test against the new major.
+# deprecates `storage_account_name` on azurerm_storage_container. Version 5.0
+# removes it, so this module needs changes before it supports that major. Do
+# not widen these constraints without a test against the new major.
 #
 # Nothing this module asks of the time provider is new: time_rotating and its
 # triggers predate the floor by years. The floor sits at 0.10.0 because that
@@ -16,8 +15,17 @@
 # job and `terraform validate` catch a schema break, and the alternative is a
 # ceiling that needs a commit for every upstream minor.
 #
+# azapi carries the cost export, which azurerm cannot express: see the comment
+# on azapi_resource.cost_export. Nothing this module asks of azapi is new: the
+# `identity` block predates the 2.x line. The floor is 2.12.0 because that is
+# the oldest release the module is tested against, and its embedded schema
+# carries `Microsoft.CostManagement/exports@2023-08-01`, which the CI floor job
+# exercises through `terraform validate`. Lowering it means testing the
+# candidate rather than reading a changelog, because the embedded schema decides
+# whether the type resolves.
+#
 # The azurerm floor is 4.0.0 because that release made `subscription_id` a
-# required provider property, which is what the caller now has to supply. That
+# required provider property, which the caller has to supply. That
 # is plan-time behavior rather than schema, so `terraform validate` cannot see
 # it: the CI floor job proves these versions still match the schema, not that
 # 4.0.0 is the correct floor. Change it against the provider changelog, not on
@@ -27,6 +35,10 @@ terraform {
     azurerm = {
       source  = "hashicorp/azurerm"
       version = ">= 4.0.0, < 5.0.0"
+    }
+    azapi = {
+      source  = "azure/azapi"
+      version = ">= 2.12.0, < 3.0.0"
     }
     random = {
       source  = "hashicorp/random"
