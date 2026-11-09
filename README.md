@@ -45,10 +45,9 @@ az ad sp show --id <client-id> --query id -o tsv
 
 Pass that as `stacklet_principal_id`. The object ID and the Client ID are both
 GUIDs, so check which one you have. Azure rejects an ID that names no principal,
-which means a successful apply is proof the grant landed on a real one. A wrong
-ID shows up as `PrincipalNotFound` after a five-minute retry, so an apply that
-sits on the role assignment for minutes usually means the ID is wrong rather
-than that Azure is slow.
+and a wrong one surfaces as `PrincipalNotFound` only after a five-minute retry,
+so an apply that sits on the role assignment for minutes usually means the ID is
+wrong rather than that Azure is slow.
 
 Check that the subscription is registered with the `Microsoft.CostManagementExports`
 resource provider, which an export delivering to a storage account by resource ID
@@ -72,11 +71,9 @@ asks you to hand over. You do not need to collect anything from the portal.
 ## Versioning
 
 This module is published to the [Terraform Registry](https://registry.terraform.io/modules/stacklet/stacklet-cost-setup/azure).
-Set `source` to the registry address and pin `version` to a release.
-
-`version` takes the usual constraint syntax, so `~> 1.0` accepts patch and minor
-releases and holds at the next major. A major bump means the root module that
-calls this one needs work before it moves. Read the release notes first.
+Set `source` to the registry address and pin `version` to a release. A major
+bump means the root module that calls this one needs work before it moves, so
+read the release notes first.
 
 ## Provider Configuration
 
@@ -227,33 +224,11 @@ error when a `-replace` address matches nothing.
 
 ## Migrating to 2.0.0
 
-If you are still on a pinned commit rather than a released version, work through
-"Migrating to 1.0.0" below first.
+Steps 1 through 3 are configuration changes to make before running
+`terraform plan`. Step 4 is a single apply.
 
-The cost export now authenticates to the Storage Account with a system-assigned
-managed identity, and the Storage Account disables shared key access. Cost
-Management cannot write to an account with shared key access disabled unless the
-export carries the identity, so the two changes ship together.
-
-The export also moves from the `azurerm` provider to `azapi`, due to limitations
-in the former. The provider change forces replacement of the export, which loses
-its run history but leaves the exported data intact. The plan reports both
-halves:
-
-```
-# module.azure_cost_setup.azurerm_subscription_cost_management_export.cost will be destroyed
-# module.azure_cost_setup.azapi_resource.cost_export will be created
-```
-
-Stacklet's role assignment moves from the Storage Account to the container, so
-the plan replaces it too. Stacklet reads the container, and the narrower grant
-withholds the account-wide `generateUserDelegationKey` action that lets its
-holder mint a shareable URL over the whole account.
-
-Complete steps 1 through 3 before running `terraform plan`. Step 4 is a single
-apply.
-
-**1. Set the module `version` to `2.0.0`.**
+**1. Set the module `version` to `2.0.0`.** If you are still on a pinned commit
+rather than a released version, work through "Migrating to 1.0.0" below first.
 
 **2. Declare the `azapi` provider.** Add an `azapi` entry to your own
 `required_providers` with `source = "azure/azapi"`, because `azapi` is not in
@@ -278,6 +253,28 @@ of being created.
 > its identity once it has one. Going back to an earlier release means deleting
 > the export by hand before applying that release. As with the upgrade, the
 > exported data is unchanged.
+
+### What the upgrade changes
+
+The cost export now authenticates to the Storage Account with a system-assigned
+managed identity, and the Storage Account disables shared key access. Cost
+Management cannot write to an account with shared key access disabled unless the
+export carries the identity, so the two changes ship together.
+
+The export also moves from the `azurerm` provider to `azapi`, due to limitations
+in the former. The provider change forces replacement of the export, which loses
+its run history but leaves the exported data intact. The plan reports both
+halves:
+
+```
+# module.azure_cost_setup.azurerm_subscription_cost_management_export.cost will be destroyed
+# module.azure_cost_setup.azapi_resource.cost_export will be created
+```
+
+Stacklet's role assignment moves from the Storage Account to the container, so
+the plan replaces it too. Stacklet reads only the container, and the narrower
+grant withholds the account-wide `generateUserDelegationKey` action that lets
+its holder mint a shareable URL over the whole account.
 
 ### After the upgrade
 
