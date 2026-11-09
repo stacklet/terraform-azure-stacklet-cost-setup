@@ -13,16 +13,7 @@ portal, see the Stacklet documentation.
 
 ## Overview
 
-Apply this module once per subscription. Each apply requires:
-
-* Owner on the subscription, or Contributor paired with Role Based Access
-  Control Administrator or User Access Administrator. The module creates
-  Resource Groups, Storage Accounts and Cost Management exports, and assigns
-  roles on the container it creates. Contributor alone cannot assign roles.
-* `storage_use_azuread = true` on the `azurerm` provider. See "Shared key
-  access and the caller's provider configuration" below.
-
-The module creates:
+This module creates the following in a single subscription:
 
 * a Resource Group that holds the resources below
 * a Storage Account for the cost management exports, with anonymous blob access
@@ -31,80 +22,49 @@ The module creates:
   system-assigned managed identity
 * a Storage Blob Data Reader assignment on the container for Stacklet
 
-## Before you apply
+Apply it once for each subscription whose costs you want available in Stacklet.
 
-Create an Entra ID service principal for Stacklet in your tenant. The Stacklet
-documentation has the steps. Keep its Tenant ID, Client ID, and Client Secret,
-and send those to Stacklet separately. This module never sees them.
+## Prerequisites
 
-The module needs the service principal's object ID:
+**Owner on the subscription**, or Contributor paired with Role Based Access
+Control Administrator or User Access Administrator. The module assigns a role on
+the container it creates, which Contributor alone cannot do.
+
+**An Entra ID service principal for Stacklet** in your tenant. The Stacklet
+documentation has the steps. Pass its object ID, not its Client ID, as
+`stacklet_principal_id`:
 
 ```
 az ad sp show --id <client-id> --query id -o tsv
 ```
 
-Pass that as `stacklet_principal_id`. The object ID and the Client ID are both
-GUIDs, so check which one you have. Azure rejects an ID that names no principal,
-and a wrong one surfaces as `PrincipalNotFound` only after a five-minute retry,
-so an apply that sits on the role assignment for minutes usually means the ID is
-wrong rather than that Azure is slow.
+Keep its Tenant ID, Client ID, and Client Secret as well. Those go to Stacklet
+separately, and this module never sees them.
 
-Check that the subscription is registered with the `Microsoft.CostManagementExports`
-resource provider, which an export delivering to a storage account by resource ID
-needs:
+**The subscription registered with the `Microsoft.CostManagementExports`
+resource provider**, which an export delivering to a storage account by resource
+ID needs. Creating an export through the Azure portal registers the provider as
+a side effect, so a subscription that has had one is already registered:
 
 ```
 az provider show -n Microsoft.CostManagementExports --query registrationState -o tsv
 az provider register -n Microsoft.CostManagementExports
 ```
 
-Creating an export through the Azure portal registers the provider as a side
-effect, so a subscription that has had one is already registered. A subscription
-that has only ever been used through the API may not be.
+**An `azapi` provider and `storage_use_azuread = true`** in the root module that
+calls this one. The examples below show both.
 
-## What to send Stacklet
+## Usage examples
 
-After the apply, `terraform output output` reports the storage account name,
-the container URL, and the subscription ID. Those are what the documentation
-asks you to hand over. You do not need to collect anything from the portal.
-
-## Versioning
-
-This module is published to the [Terraform Registry](https://registry.terraform.io/modules/stacklet/stacklet-cost-setup/azure).
-Set `source` to the registry address and pin `version` to a release. A major
-bump means the root module that calls this one needs work before it moves, so
-read the release notes first.
-
-## Provider Configuration
-
-This module does not configure providers. The calling module must configure
-the `azurerm` and `azapi` providers with the target subscription. azurerm 4.0
-and later require `subscription_id` on the provider block. The provider does not
+This module does not configure providers. The calling module must configure the
+`azurerm` and `azapi` providers with the target subscription. azurerm 4.0 and
+later require `subscription_id` on the provider block. The provider does not
 read the subscription that `az login` selected.
 
-### Shared key access and the caller's provider configuration
+The module is published to the [Terraform Registry](https://registry.terraform.io/modules/stacklet/stacklet-cost-setup/azure).
+Set `source` to the registry address and pin `version` to a release.
 
-Set `storage_use_azuread = true` on the `azurerm` provider before the first
-apply. The Storage Account disables shared key access, and the azurerm provider
-reaches both the account and its container over the data plane, with an access
-key unless this setting redirects those calls through Entra ID. Without it the
-first apply fails while creating the Storage Account, and every later
-`terraform plan`, `apply` and `destroy` fails the same way:
-
-```
-Error: encoding Storage Account ...: retrieving queue properties ...: 403
-KeyBasedAuthenticationNotPermitted
-```
-
-Credentials come from the standard Azure authentication chain. For local use,
-authenticate with `az login`. For automated deployments, supply credentials
-through environment variables (`ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`,
-`ARM_TENANT_ID`) or set `client_id`, `client_secret`, and `tenant_id` directly
-on the provider block.
-
-### Standalone deployment
-
-Applying the cost export to a single subscription:
+### One subscription
 
 ```hcl
 terraform {
@@ -190,76 +150,61 @@ One service principal can serve every subscription. Pass its object ID in each
 module block. The module grants it read access on each Storage Account it
 creates.
 
-## The cost export window
+Credentials come from the standard Azure authentication chain. For local use,
+authenticate with `az login`. For automated deployments, supply credentials
+through environment variables (`ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`,
+`ARM_TENANT_ID`) or set `client_id`, `client_secret`, and `tenant_id` directly
+on the provider block.
 
-The Cost Management API requires an end date on a scheduled export, so the
-module schedules a window rather than an open-ended export. `export_window_years`
-sets its length, ten years by default.
+## What to send Stacklet
 
-An apply starts a fresh window, running the full length again from the time of
-the apply, whenever any of these are true:
+Send Stacklet the output of `terraform output output`, which reports:
 
-* half the window has passed
-* `export_window_years` has changed
-* anything else about the export has changed
+* `storage_account`, the name of the Storage Account
+* `container_url`, the URL of the container holding the export
+* `subscription_id`, the subscription the costs come from
 
-The window does not renew itself. A deployment that goes unapplied from the
-half-way point to the end date keeps exporting until that end date, then stops.
-Applying again puts it back on schedule. Window rotation does not modify
-existing cost data.
+Send the service principal's Tenant ID, Client ID, and Client Secret separately.
+You do not need to collect anything from the portal.
 
-Changing the export outside Terraform leaves the module holding a start date
-Azure no longer accepts. Deleting it, recreating it, or pausing it in the portal
-all have this effect: the next apply sends the stored start back with the rest of
-the body and fails with `'from' value cannot be in the past`, whatever was
-actually edited. That does not self-correct, because the resource to replace is
-the start date rather than the export:
+## Upgrade notes
 
-```
-terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_start
-```
-
-Use your own module block name. Terraform reports no changes rather than an
-error when a `-replace` address matches nothing.
-
-## Migrating to 2.0.0
+<details>
+<summary><b>Upgrading to 2.0.0 (cannot be reverted in place)</b></summary>
 
 Steps 1 through 3 are configuration changes to make before running
 `terraform plan`. Step 4 is a single apply.
 
 **1. Set the module `version` to `2.0.0`.** If you are still on a pinned commit
-rather than a released version, work through "Migrating to 1.0.0" below first.
+rather than a released version, work through "Upgrading to 1.0.0" below first.
 
 **2. Declare the `azapi` provider.** Add an `azapi` entry to your own
 `required_providers` with `source = "azure/azapi"`, because `azapi` is not in
 the `hashicorp` namespace and Terraform otherwise looks for it there and fails.
 Add an `azapi` provider block, and add `azapi = azapi.<alias>` to the
 `providers` map where your module block passes one. The examples under
-"Provider Configuration" above show both layouts. Run `terraform init -upgrade`
+"Usage examples" above show both layouts. Run `terraform init -upgrade`
 afterwards.
 
-**3. Set `storage_use_azuread = true`** on the `azurerm` provider, as described
-in "Shared key access and the caller's provider configuration" above. A plan
-does not catch this one. Skip it and the apply fails after it has already
-destroyed the old export, leaving the subscription exporting nothing until you
-add the setting and apply again.
+**3. Set `storage_use_azuread = true`** on the `azurerm` provider. A plan does
+not catch this one. Skip it and the apply fails after it has already destroyed
+the old export, leaving the subscription exporting nothing until you add the
+setting and apply again.
 
 **4. Apply.** The apply disables anonymous blob access and shared key access on
 the Storage Account, and the new export gets the write access it needs as part
 of being created.
 
-> [!WARNING]
-> Reverting this upgrade cannot be done in place, because an export cannot drop
-> its identity once it has one. Going back to an earlier release means deleting
-> the export by hand before applying that release. As with the upgrade, the
-> exported data is unchanged.
+**Reverting this upgrade cannot be done in place**, because an export cannot
+drop its identity once it has one. Going back to an earlier release means
+deleting the export by hand before applying that release. As with the upgrade,
+the exported data is unchanged.
 
-### What the upgrade changes
-
-The cost export now authenticates to the Storage Account with a system-assigned
-managed identity, and the Storage Account disables shared key access. Cost
-Management cannot write to an account with shared key access disabled unless the
-export carries the identity, so the two changes ship together.
+**What the upgrade changes.** The cost export now authenticates to the Storage
+Account with a system-assigned managed identity, and the Storage Account
+disables shared key access. Cost Management cannot write to an account with
+shared key access disabled unless the export carries the identity, so the two
+changes ship together.
 
 The export also moves from the `azurerm` provider to `azapi`, due to limitations
 in the former. The provider change forces replacement of the export, which loses
@@ -276,31 +221,14 @@ the plan replaces it too. Stacklet reads only the container, and the narrower
 grant withholds the account-wide `generateUserDelegationKey` action that lets
 its holder mint a shareable URL over the whole account.
 
-### After the upgrade
+Cost Management does not run the export when it is created, so confirm the
+upgrade by triggering a run rather than waiting a day for the first scheduled
+one. See "Confirming that the export runs" under Troubleshooting.
 
-Cost Management does not run the export when it is created, and the first
-scheduled run lands about a day later. Trigger one by hand to confirm the
-upgrade rather than waiting:
+</details>
 
-```
-az rest --method post --headers "Content-Length=0" \
-  --url 'https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.CostManagement/exports/<name>/run?api-version=2023-08-01'
-```
-
-Poll the run history at the `runHistory` endpoint, which is a separate path from
-`/run`:
-
-```
-az rest --method get \
-  --url 'https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.CostManagement/exports/<name>/runHistory?api-version=2023-08-01'
-```
-
-A run passes through `Queued` and `InProgress` before it reaches `Completed`.
-A run that cannot write to the Storage Account ends at `Failed`. Runs usually
-finish in under a minute, but not always, so allow about twenty minutes before
-treating one as stuck.
-
-## Migrating to 1.0.0
+<details>
+<summary><b>Upgrading to 1.0.0</b></summary>
 
 1.0.0 is the first release, so whatever you have now is pinned to a commit
 rather than to a version. Move `source` to the registry address and set
@@ -335,6 +263,106 @@ terraform import module.azure_cost_setup.azurerm_role_assignment.stacklet_cost_r
 The `output` map also drops its `storage_container` key for `container_url`.
 Despite its name, that key already held the container URL, so the value does not
 change. Anything reading it needs a rename and nothing more.
+
+</details>
+
+## Troubleshooting
+
+<details>
+<summary><b>Every plan and apply fails with <code>KeyBasedAuthenticationNotPermitted</code></b></summary>
+
+```
+Error: encoding Storage Account ...: retrieving queue properties ...: 403
+KeyBasedAuthenticationNotPermitted
+```
+
+Set `storage_use_azuread = true` on the `azurerm` provider. The Storage Account
+disables shared key access, and the provider reaches both the account and its
+container over the data plane, with an access key unless this redirects those
+calls through Entra ID.
+
+Set it before the first apply. Without it the first apply fails while creating
+the Storage Account, and every later `terraform plan`, `apply` and `destroy`
+fails the same way.
+
+</details>
+
+<details>
+<summary><b>An apply sits on the role assignment for minutes</b></summary>
+
+The `stacklet_principal_id` is usually wrong. The object ID and the Client ID
+are both GUIDs, so check which one you have. Azure rejects an ID that names no
+principal, and a wrong one surfaces as `PrincipalNotFound` only after a
+five-minute retry.
+
+</details>
+
+<details>
+<summary><b>An apply fails with <code>'from' value cannot be in the past</code></b></summary>
+
+Something changed the export outside Terraform, which leaves the module holding
+a start date Azure no longer accepts. Deleting the export, recreating it, or
+pausing it in the portal all have this effect: the next apply sends the stored
+start back with the rest of the body and fails, whatever was actually edited.
+
+That does not self-correct, because the resource to replace is the start date
+rather than the export:
+
+```
+terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_start
+```
+
+Use your own module block name. Terraform reports no changes rather than an
+error when a `-replace` address matches nothing.
+
+</details>
+
+<details>
+<summary><b>The cost export window</b></summary>
+
+The Cost Management API requires an end date on a scheduled export, so the
+module schedules a window rather than an open-ended export. `export_window_years`
+sets its length, ten years by default.
+
+An apply starts a fresh window, running the full length again from the time of
+the apply, whenever any of these are true:
+
+* half the window has passed
+* `export_window_years` has changed
+* anything else about the export has changed
+
+The window does not renew itself. A deployment that goes unapplied from the
+half-way point to the end date keeps exporting until that end date, then stops.
+Applying again puts it back on schedule. Window rotation does not modify
+existing cost data.
+
+</details>
+
+<details>
+<summary><b>Confirming that the export runs</b></summary>
+
+Cost Management does not run the export when it is created, and the first
+scheduled run lands about a day later. Trigger one by hand rather than waiting:
+
+```
+az rest --method post --headers "Content-Length=0" \
+  --url 'https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.CostManagement/exports/<name>/run?api-version=2023-08-01'
+```
+
+Poll the run history at the `runHistory` endpoint, which is a separate path from
+`/run`:
+
+```
+az rest --method get \
+  --url 'https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.CostManagement/exports/<name>/runHistory?api-version=2023-08-01'
+```
+
+A run passes through `Queued` and `InProgress` before it reaches `Completed`.
+A run that cannot write to the Storage Account ends at `Failed`. Runs usually
+finish in under a minute, but not always, so allow about twenty minutes before
+treating one as stuck.
+
+</details>
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
@@ -378,7 +406,7 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_customer_prefix"></a> [customer\_prefix](#input\_customer\_prefix) | Stacklet provided customer prefix | `string` | n/a | yes |
-| <a name="input_export_window_years"></a> [export\_window\_years](#input\_export\_window\_years) | Length in years of the cost export schedule. The module renews the window once half of it passes, and changing this forces a fresh window from the time of the apply. Renewal needs an apply to happen. See the cost export window section of the README. | `number` | `10` | no |
+| <a name="input_export_window_years"></a> [export\_window\_years](#input\_export\_window\_years) | Length in years of the cost export schedule. The module renews the window once half of it passes, and changing this forces a fresh window from the time of the apply. Renewal needs an apply to happen. See the cost export window note under Troubleshooting in the README. | `number` | `10` | no |
 | <a name="input_resource_group_location"></a> [resource\_group\_location](#input\_resource\_group\_location) | Resource group deployment location | `string` | n/a | yes |
 | <a name="input_stacklet_principal_id"></a> [stacklet\_principal\_id](#input\_stacklet\_principal\_id) | Object ID of the Entra ID service principal that Stacklet reads the cost export with. This is the service principal's object ID, not the application (client) ID of the app registration behind it. | `string` | n/a | yes |
 
@@ -386,5 +414,5 @@ No modules.
 
 | Name | Description |
 |------|-------------|
-| <a name="output_output"></a> [output](#output\_output) | n/a |
+| <a name="output_output"></a> [output](#output\_output) | Values to send Stacklet: the Storage Account name, the URL of the container holding the export, and the subscription the costs come from. |
 <!-- END_TF_DOCS -->
