@@ -6,9 +6,10 @@ resource "random_string" "storage_account_suffix" {
 }
 
 locals {
-  # Renewing at half the window leaves the other half to run on, so a deployment
-  # applied only now and then never finds the export expired. Nothing renews one
-  # that no-one applies: the time provider proposes the renewal during a plan.
+  # Renewing at half the window leaves the other half to run on, so an apply any
+  # time in that half moves the expiry out again. Nothing renews a deployment
+  # that no-one applies: the time provider proposes the renewal during a plan,
+  # so one left alone past its end date stops exporting.
   #
   # Counted in months because half an odd window is not a whole number of years,
   # and rounding down would renew earlier than the README says it does.
