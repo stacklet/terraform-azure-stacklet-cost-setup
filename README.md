@@ -4,9 +4,9 @@ Azure Cost Management export setup for Stacklet customers.
 
 This module configures one Azure subscription to export its cost data to a
 Storage Account, in the format that the Stacklet platform reads. The platform
-runs outside the subscription, so the module also grants read access on that
-Storage Account to a service principal that you create and that Stacklet
-authenticates as.
+runs outside the subscription, so the module also grants read access on the
+container holding the export to a service principal that you create and that
+Stacklet authenticates as.
 
 For background, and for the steps to do the same thing through the Azure
 portal, see the Stacklet documentation.
@@ -18,6 +18,7 @@ This module creates the following in a single subscription:
 * a Resource Group that holds the resources below
 * a Storage Account for the cost management exports, with anonymous blob access
   and shared key access both disabled
+* a container in that Storage Account for the export to write to
 * a daily Cost Management export job that writes to the Storage Account under a
   system-assigned managed identity
 * a Storage Blob Data Reader assignment on the container for Stacklet
@@ -43,13 +44,20 @@ separately, and this module never sees them.
 
 **The subscription registered with the `Microsoft.CostManagementExports`
 resource provider**, which an export delivering to a storage account by resource
-ID needs. Creating an export through the Azure portal registers the provider as
-a side effect, so a subscription that has had one is already registered:
+ID needs. Register the subscription that holds the Storage Account, once for
+each one you apply this module to. Creating an export through the Azure portal
+registers the provider as a side effect, so a subscription that has had one is
+already registered:
 
 ```
-az provider show -n Microsoft.CostManagementExports --query registrationState -o tsv
-az provider register -n Microsoft.CostManagementExports
+az provider show -n Microsoft.CostManagementExports --query registrationState -o tsv \
+  --subscription <subscription-id>
+az provider register -n Microsoft.CostManagementExports --subscription <subscription-id>
 ```
+
+An apply against an unregistered subscription fails on the export with
+`RP Not Registered. Register destination storage account subscription with
+Microsoft.CostManagementExports.`
 
 **An `azapi` provider and `storage_use_azuread = true`** in the root module that
 calls this one. The examples below show both.
@@ -147,8 +155,8 @@ module "azure_cost_setup_workload" {
 ```
 
 One service principal can serve every subscription. Pass its object ID in each
-module block. The module grants it read access on each Storage Account it
-creates.
+module block. The module grants it read access on the export container in each
+subscription.
 
 Credentials come from the standard Azure authentication chain. For local use,
 authenticate with `az login`. For automated deployments, supply credentials
@@ -158,7 +166,8 @@ on the provider block.
 
 ## What to send Stacklet
 
-Send Stacklet the output of `terraform output output`, which reports:
+Send Stacklet the output of `terraform output output`, a map with a single
+`azure` key holding:
 
 * `storage_account`, the name of the Storage Account
 * `container_url`, the URL of the container holding the export
@@ -249,7 +258,7 @@ configuration with the caller who owns the subscription.
 plan until you supply it. Pass the object ID of the principal you already granted
 Storage Blob Data Reader by hand, if you granted one.
 
-The module grants that role on the container. A grant you made at the Storage
+Applying 2.0.0 grants that role on the container. A grant you made at the Storage
 Account carries a different scope, so the two do not collide and the apply
 succeeds, leaving Stacklet with the wider of the two. Remove the one you made by
 hand afterwards. A grant you made on the container itself does collide, and the
@@ -414,5 +423,5 @@ No modules.
 
 | Name | Description |
 |------|-------------|
-| <a name="output_output"></a> [output](#output\_output) | Values to send Stacklet: the Storage Account name, the URL of the container holding the export, and the subscription the costs come from. |
+| <a name="output_output"></a> [output](#output\_output) | Values to send Stacklet, under an `azure` key: the Storage Account name, the URL of the container holding the export, and the subscription the costs come from. |
 <!-- END_TF_DOCS -->

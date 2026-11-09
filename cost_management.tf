@@ -39,6 +39,8 @@ resource "azurerm_storage_container" "cost" {
 # The cost is that the provider then reads an invalid ID as replication lag and
 # retries for the full 30-minute create timeout, hence the override below.
 resource "azurerm_role_assignment" "stacklet_cost_reader" {
+  # Built by hand rather than read off azurerm_storage_container.cost.resource_manager_id,
+  # which holds the same string but is deprecated and goes away in azurerm 5.0.
   scope                = "${azurerm_storage_account.cost.id}/blobServices/default/containers/${azurerm_storage_container.cost.name}"
   role_definition_name = "Storage Blob Data Reader"
   principal_id         = var.stacklet_principal_id
