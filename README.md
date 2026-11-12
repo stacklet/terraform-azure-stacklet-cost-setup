@@ -166,8 +166,7 @@ on the provider block.
 
 ## What to send Stacklet
 
-Send Stacklet the output of `terraform output output`, a map with a single
-`azure` key holding:
+Run `terraform output` and send Stacklet all three values:
 
 * `storage_account`, the name of the Storage Account
 * `container_url`, the URL of the container holding the export
@@ -229,6 +228,12 @@ the plan replaces it too. Stacklet reads only the container, and the narrower
 grant withholds the account-wide `generateUserDelegationKey` action that lets
 its holder mint a shareable URL over the whole account.
 
+The outputs change shape. Where there was one output named `output`, holding a
+map with everything under an `azure` key, there are now three top-level outputs:
+`storage_account`, `container_url` and `subscription_id`. A root module that
+forwards `module.azure_cost_setup.output` has to name the values it wants
+instead.
+
 Cost Management does not run the export when it is created, so confirm the
 upgrade by triggering a run rather than waiting a day for the first scheduled
 one. See "Confirming that the export runs" under Troubleshooting.
@@ -264,10 +269,6 @@ apply fails with `RoleAssignmentExists` until you import it:
 terraform import module.azure_cost_setup.azurerm_role_assignment.stacklet_cost_reader \
   "<container-resource-id>/providers/Microsoft.Authorization/roleAssignments/<assignment-guid>"
 ```
-
-The `output` map also drops its `storage_container` key for `container_url`.
-Despite its name, that key already held the container URL, so the value does not
-change. Anything reading it needs a rename and nothing more.
 
 ## Troubleshooting
 
@@ -402,5 +403,7 @@ No modules.
 
 | Name | Description |
 |------|-------------|
-| <a name="output_output"></a> [output](#output\_output) | Values to send Stacklet, under an `azure` key: the Storage Account name, the URL of the container holding the export, and the subscription the costs come from. |
+| <a name="output_container_url"></a> [container\_url](#output\_container\_url) | URL of the container the cost export writes to. |
+| <a name="output_storage_account"></a> [storage\_account](#output\_storage\_account) | Name of the Storage Account holding the cost export. |
+| <a name="output_subscription_id"></a> [subscription\_id](#output\_subscription\_id) | ID of the subscription the cost data covers. |
 <!-- END_TF_DOCS -->
