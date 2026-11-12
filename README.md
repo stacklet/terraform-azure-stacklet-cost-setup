@@ -101,7 +101,23 @@ module "azure_cost_setup" {
   resource_group_location = "eastus"
   stacklet_principal_id   = "00000000-0000-0000-0000-000000000000"
 }
+
+output "storage_account" {
+  value = module.azure_cost_setup.storage_account
+}
+
+output "container_url" {
+  value = module.azure_cost_setup.container_url
+}
+
+output "subscription_id" {
+  value = module.azure_cost_setup.subscription_id
+}
 ```
+
+The three `output` blocks are what makes the values readable. `terraform
+output` reports the root module only, so a module output that no root output
+forwards cannot be read from the command line at all.
 
 ### Several subscriptions in one root module
 
@@ -152,7 +168,18 @@ module "azure_cost_setup_workload" {
   resource_group_location = "eastus"
   stacklet_principal_id   = "00000000-0000-0000-0000-000000000000"
 }
+
+output "azure_cost_setup_workload" {
+  value = {
+    storage_account = module.azure_cost_setup_workload.storage_account
+    container_url   = module.azure_cost_setup_workload.container_url
+    subscription_id = module.azure_cost_setup_workload.subscription_id
+  }
+}
 ```
+
+Each module block needs its own forwarding output, named for the subscription
+it covers, so the values arrive at Stacklet labelled.
 
 One service principal can serve every subscription. Pass its object ID in each
 module block. The module grants it read access on the export container in each
@@ -166,7 +193,8 @@ on the provider block.
 
 ## What to send Stacklet
 
-Run `terraform output` and send Stacklet all three values:
+Forward the module outputs from your root module, as the usage examples above
+do, then run `terraform output` and send Stacklet all three values:
 
 * `storage_account`, the name of the Storage Account
 * `container_url`, the URL of the container holding the export
