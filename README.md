@@ -102,6 +102,7 @@ module "azure_cost_setup" {
   stacklet_principal_id   = "00000000-0000-0000-0000-000000000000"
 }
 
+# terraform output reports the root module only, so forward what you want to read.
 output "storage_account" {
   value = module.azure_cost_setup.storage_account
 }
@@ -114,10 +115,6 @@ output "subscription_id" {
   value = module.azure_cost_setup.subscription_id
 }
 ```
-
-The three `output` blocks are what makes the values readable. `terraform
-output` reports the root module only, so a module output that no root output
-forwards cannot be read from the command line at all.
 
 ### Several subscriptions in one root module
 
@@ -169,6 +166,7 @@ module "azure_cost_setup_workload" {
   stacklet_principal_id   = "00000000-0000-0000-0000-000000000000"
 }
 
+# Every module block needs its own forwarding output.
 output "azure_cost_setup_workload" {
   value = {
     storage_account = module.azure_cost_setup_workload.storage_account
@@ -177,9 +175,6 @@ output "azure_cost_setup_workload" {
   }
 }
 ```
-
-Each module block needs its own forwarding output, named for the subscription
-it covers, so the values arrive at Stacklet labelled.
 
 One service principal can serve every subscription. Pass its object ID in each
 module block. The module grants it read access on the export container in each
@@ -193,15 +188,10 @@ on the provider block.
 
 ## What to send Stacklet
 
-Forward the module outputs from your root module, as the usage examples above
-do, then run `terraform output` and send Stacklet all three values:
-
-* `storage_account`, the name of the Storage Account
-* `container_url`, the URL of the container holding the export
-* `subscription_id`, the subscription the costs come from
-
-Send the service principal's Tenant ID, Client ID, and Client Secret separately.
-You do not need to collect anything from the portal.
+Run `terraform output` and send Stacklet every value the module returns, once
+per subscription you applied it to. Send the service principal's Tenant ID,
+Client ID, and Client Secret separately. You do not need to collect anything
+from the portal.
 
 ## Upgrade notes
 
