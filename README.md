@@ -178,8 +178,7 @@ You do not need to collect anything from the portal.
 
 ## Upgrade notes
 
-<details>
-<summary><b>Upgrading to 2.0.0 (cannot be reverted in place)</b></summary>
+### Upgrading to 2.0.0
 
 Steps 1 through 3 are configuration changes to make before running
 `terraform plan`. Step 4 is a single apply.
@@ -204,10 +203,10 @@ setting and apply again.
 the Storage Account, and the new export gets the write access it needs as part
 of being created.
 
-**Reverting this upgrade cannot be done in place**, because an export cannot
-drop its identity once it has one. Going back to an earlier release means
-deleting the export by hand before applying that release. As with the upgrade,
-the exported data is unchanged.
+> **Warning:** reverting this upgrade cannot be done in place, because an
+> export cannot drop its identity once it has one. Going back to an earlier
+> release means deleting the export by hand before applying that release. As
+> with the upgrade, the exported data is unchanged.
 
 **What the upgrade changes.** The cost export now authenticates to the Storage
 Account with a system-assigned managed identity, and the Storage Account
@@ -234,10 +233,7 @@ Cost Management does not run the export when it is created, so confirm the
 upgrade by triggering a run rather than waiting a day for the first scheduled
 one. See "Confirming that the export runs" under Troubleshooting.
 
-</details>
-
-<details>
-<summary><b>Upgrading to 1.0.0</b></summary>
+### Upgrading to 1.0.0
 
 1.0.0 is the first release, so whatever you have now is pinned to a commit
 rather than to a version. Move `source` to the registry address and set
@@ -273,12 +269,9 @@ The `output` map also drops its `storage_container` key for `container_url`.
 Despite its name, that key already held the container URL, so the value does not
 change. Anything reading it needs a rename and nothing more.
 
-</details>
-
 ## Troubleshooting
 
-<details>
-<summary><b>Every plan and apply fails with <code>KeyBasedAuthenticationNotPermitted</code></b></summary>
+### Every plan and apply fails with `KeyBasedAuthenticationNotPermitted`
 
 ```
 Error: encoding Storage Account ...: retrieving queue properties ...: 403
@@ -294,20 +287,14 @@ Set it before the first apply. Without it the first apply fails while creating
 the Storage Account, and every later `terraform plan`, `apply` and `destroy`
 fails the same way.
 
-</details>
-
-<details>
-<summary><b>An apply sits on the role assignment for minutes</b></summary>
+### An apply sits on the role assignment for minutes
 
 The `stacklet_principal_id` is usually wrong. The object ID and the Client ID
 are both GUIDs, so check which one you have. Azure rejects an ID that names no
 principal, and a wrong one surfaces as `PrincipalNotFound` only after a
 five-minute retry.
 
-</details>
-
-<details>
-<summary><b>An apply fails with <code>'from' value cannot be in the past</code></b></summary>
+### An apply fails with `'from' value cannot be in the past`
 
 Something changed the export outside Terraform, which leaves the module holding
 a start date Azure no longer accepts. Deleting the export, recreating it, or
@@ -324,10 +311,7 @@ terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_sta
 Use your own module block name. Terraform reports no changes rather than an
 error when a `-replace` address matches nothing.
 
-</details>
-
-<details>
-<summary><b>The cost export window</b></summary>
+### The cost export window
 
 The Cost Management API requires an end date on a scheduled export, so the
 module schedules a window rather than an open-ended export. `export_window_years`
@@ -345,10 +329,7 @@ half-way point to the end date keeps exporting until that end date, then stops.
 Applying again puts it back on schedule. Window rotation does not modify
 existing cost data.
 
-</details>
-
-<details>
-<summary><b>Confirming that the export runs</b></summary>
+### Confirming that the export runs
 
 Cost Management does not run the export when it is created, and the first
 scheduled run lands about a day later. Trigger one by hand rather than waiting:
@@ -370,8 +351,6 @@ A run passes through `Queued` and `InProgress` before it reaches `Completed`.
 A run that cannot write to the Storage Account ends at `Failed`. Runs usually
 finish in under a minute, but not always, so allow about twenty minutes before
 treating one as stuck.
-
-</details>
 
 <!-- BEGIN_TF_DOCS -->
 ## Requirements
