@@ -259,7 +259,9 @@ one. See "Confirming that the export runs" under Troubleshooting.
 ### Upgrading to 1.0.0
 
 1.0.0 is the first release, so whatever you have now is pinned to a commit
-rather than to a version. Move `source` to the registry address and set
+rather than to a version. Work through this section together with the 2.0.0
+steps above and apply once, rather than applying 1.0.0 on the way: the end state
+described here is 2.0.0's. Move `source` to the registry address and set
 `version`, as shown above.
 
 Read your current copy rather than a version number. If it declares its own
@@ -330,6 +332,18 @@ terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_sta
 Use your own module block name. Terraform reports no changes rather than an
 error when a `-replace` address matches nothing.
 
+### Runs fail after the export's own grant is removed
+
+Cost Management grants the export's identity write access on the container as
+part of writing the export, and the module does not manage that assignment.
+Remove it and the runs fail, while `terraform apply` reports no changes, because
+nothing in the configuration has changed. A scheduled run does not restore it
+either. Only another write to the export does:
+
+```
+terraform apply -replace=module.azure_cost_setup.azapi_resource.cost_export
+```
+
 ### The cost export window
 
 The Cost Management API requires an end date on a scheduled export, so the
@@ -351,7 +365,9 @@ existing cost data.
 ### Confirming that the export runs
 
 Cost Management does not run the export when it is created, and the first
-scheduled run lands about a day later. Trigger one by hand rather than waiting:
+scheduled run lands about a day later. Trigger one by hand rather than waiting.
+The export and the Storage Account share a name, so `<name>` below is the
+`storage_account` output value:
 
 ```
 az rest --method post --headers "Content-Length=0" \
