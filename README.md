@@ -338,11 +338,16 @@ Cost Management grants the export's identity write access on the container as
 part of writing the export, and the module does not manage that assignment.
 Remove it and the runs fail, while `terraform apply` reports no changes, because
 nothing in the configuration has changed. A scheduled run does not restore it
-either. Only another write to the export does:
+either. Only another write to the export does, and replacing the start date
+produces one:
 
 ```
-terraform apply -replace=module.azure_cost_setup.azapi_resource.cost_export
+terraform apply -replace=module.azure_cost_setup.time_rotating.export_window_start
 ```
+
+Replacing the export itself does not work. Terraform destroys it first, and the
+create then sends the stored start date back, which Azure refuses once it is
+more than about a day old.
 
 ### The cost export window
 
